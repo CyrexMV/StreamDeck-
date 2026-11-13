@@ -624,7 +624,9 @@ function widgetHTML(btn, label) {
       return gauge(m ? m.level : null, m && m.muted ? "🔇 stumm" : (label || "Lautstärke"), m && m.muted ? "#e5484d" : "#7c5cff");
     }
     case "nowplaying": {
-      const m = st.media || {};
+      const sp = st.spotify || {};
+      const m = st.media?.title ? st.media
+        : sp.connected && sp.title ? { title: sp.title, artist: sp.artist, cover: sp.cover, playing: sp.playing } : st.media || {};
       if (!m.title) {
         return `<div class="w-np empty"><span class="icon">${esc(btn.icon || "🎵")}</span>` +
           `<span class="label">${esc(m.available === false ? "Läuft gerade (nur Windows)" : "Gerade läuft nichts")}</span></div>`;
@@ -651,7 +653,7 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
     const sp = (App.spans || {})[slot] || btn.size || { w: 1, h: 1 };
     const vh = App.transposed ? sp.w : sp.h, vw = App.transposed ? sp.h : sp.w;
     const ch = faderChannel(btn);
-    inner = faderHTML(ch, { label: label || channelName(ch), icon: ico || "🔊", logo: btn.app_icon === "off" ? null : appIconUrl(btn), vertical: (vh || 1) >= (vw || 1), compact: ((vh || 1) === 1 && (vw || 1) === 1) || ((vw || 1) === 2 && (vh || 1) === 1) });
+    inner = faderHTML(ch, { label: label || channelName(ch), icon: ico || "🔊", logo: btn.app_icon === "off" ? null : appIconUrl(btn), track: trackForButton(btn), vertical: (vh || 1) >= (vw || 1), compact: ((vh || 1) === 1 && (vw || 1) === 1) || ((vw || 1) === 2 && (vh || 1) === 1) });
     cls += " fader-face";
   } else if (btn.widget) {
     inner = widgetHTML(btn, label);
@@ -662,7 +664,7 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
       : logo && btn.app_icon === "main" ? `<img class="img appicon" src="${esc(logo)}" alt="" draggable="false">`
         : ico ? `<span class="icon">${esc(ico)}</span>` : "";
     if (btn.image && btn.image_fill) cls += " img-fill";
-    inner = visual + (showLabels && label ? `<span class="label">${esc(label)}</span>` : "");
+    inner = visual + (showLabels && label ? `<span class="label">${esc(label)}</span>` : "") + trackHTML(trackForButton(btn));
     if (logo && btn.app_icon === "badge") inner += `<img class="badge" src="${esc(logo)}" alt="" draggable="false">`;
     const val = valueText(btn);
     if (val) inner += `<span class="value">${val}</span>`;
@@ -735,6 +737,46 @@ function requestAppIcons(extra = []) {
   rpc("app_icons", { refs: todo }).catch(() => todo.forEach((r) => iconRequested.delete(r.key + "|" + (r.target || ""))));
 }
 
+/* ============================================================== Songtitel */
+function spotifyTrack() {
+  const sp = App.state.spotify || {}, m = App.state.media || {};
+  if (sp.connected && sp.title) return { title: sp.title, artist: sp.artist, playing: sp.playing };
+  if (m.spotify_title) return { title: m.spotify_title, artist: m.spotify_artist, playing: m.spotify_playing };
+  if (m.title && /spotify/i.test(m.app || "")) return { title: m.title, artist: m.artist, playing: m.shown_playing };
+  return null;
+}
+
+function mediaTrack() {
+  const m = App.state.media || {};
+  return m.title ? { title: m.title, artist: m.artist, playing: m.shown_playing ?? m.playing } : spotifyTrack();
+}
+
+/* Welche Kachel zeigt den Songtitel? Automatisch: Spotify-Play/Pause, Spotify-Fader,
+   Spotify öffnen/Ordner. Pro Taste im Editor umstellbar (show_track: true/false). */
+function trackForButton(btn) {
+  if (btn.show_track === false || btn.widget === "nowplaying") return null;
+  const a = (btn.actions || [])[0] || {};
+  if (a.type === "media" && a.op === "play_pause") return mediaTrack();
+  const spotifyTile = (a.type === "spotify" && a.op === "play_pause") ||
+    (btn.widget === "fader" && (btn.fader?.target === "spotify" || safeKey(btn.fader?.app) === "spotify")) ||
+    (!btn.widget && appRefForButton(btn)?.key === "spotify" && (a.type === "open" || a.type === "page"));
+  if (spotifyTile) return spotifyTrack();
+  if (btn.show_track === true) return appRefForButton(btn)?.key === "spotify" ? spotifyTrack() : mediaTrack();
+  return null;
+}
+
+function trackHTML(track, cls = "track") {
+  if (!track || !track.title) return "";
+  const text = track.artist ? `${track.title} – ${track.artist}` : track.title;
+  const long = text.length > 16;
+  const dur = Math.max(7, Math.round(text.length * 0.32));
+  const paused = track.playing === false;
+  // Lauftext: Text doppelt hintereinander, Animation um genau eine Länge → startet lesbar und läuft nahtlos
+  const inner = long && !paused ? `${esc(text)}&emsp;•&emsp;${esc(text)}&emsp;•&emsp;` : esc(text);
+  return `<span class="${cls}${long ? " scroll" : ""}${paused ? " paused" : ""}" style="--dur:${dur}s" title="${esc(text)}">` +
+    `<span>${inner}</span></span>`;
+}
+
 /* ================================================================== Fader */
 const APP_NAMES = { spotify: "Spotify", discord: "Discord", chrome: "Chrome", msedge: "Edge", firefox: "Firefox", opera: "Opera",
   brave: "Brave", obs64: "OBS", steam: "Steam", steamwebhelper: "Steam", "ms-teams": "Teams", teams: "Teams", zoom: "Zoom",
@@ -805,14 +847,14 @@ function faderValueText(ch, v) {
   return ch.kind === "obs" ? fmtDb(v.db ?? pctToDb(v.level)) : `${v.level}%`;
 }
 
-function faderHTML(ch, { label, icon, logo = null, vertical, compact = false }) {
+function faderHTML(ch, { label, icon, logo = null, track = null, vertical, compact = false }) {
   const v = channelView(ch);
   const key = chKey(ch);
   const lvl = v.level ?? 0;
   const muteIco = v.muted ? (ch.kind === "mic" ? "🚫" : "🔇") : (ch.kind === "mic" ? "🎤" : "🔊");
   const cls = `fader ${vertical ? "v" : "h"}${compact ? " compact" : ""}${v.muted ? " muted" : ""}${v.level == null ? " off" : ""}${App.faderDrag === key ? " dragging" : ""}`;
   return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%">` +
-    `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">` : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span></div>` +
+    `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">` : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span>${compact ? "" : trackHTML(track, "f-song")}</div>` +
     `<div class="f-track"><div class="f-fill"></div><div class="f-knob"></div></div>` +
     `<div class="f-foot"><span class="f-val">${esc(faderValueText(ch, v))}</span>` +
     (v.level == null ? "" : `<button class="f-mute" type="button" aria-label="Stumm schalten">${muteIco}</button>`) + `</div></div>`;
@@ -922,7 +964,8 @@ function stripHTML(ch) {
   const { label, icon, group, ...core } = ch;
   const key = core.kind === "app" ? safeKey(core.app) : core.kind === "spotify" ? "spotify" : core.kind === "obs" ? "obs64" : null;
   const logo = key ? (App.state.appicons || {})[key] : null;
-  return faderHTML(core, { label, icon, logo, vertical: true }) + (group === "obs" ? `<span class="strip-tag">OBS</span>` : "");
+  const track = core.kind === "spotify" || (core.kind === "app" && key === "spotify") ? spotifyTrack() : null;
+  return faderHTML(core, { label, icon, logo, track, vertical: true }) + (group === "obs" ? `<span class="strip-tag">OBS</span>` : "");
 }
 
 function renderMixer(full) {
@@ -1489,7 +1532,7 @@ function openEditor(slot) {
         h("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
           h("button", { class: "btn", html: icon("grid") + "Vorlage wählen", onclick: () => openTemplates((tpl) => {
             Object.assign(draft, clone(tpl));
-            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size", "app", "app_icon"]) if (!(k in tpl)) delete draft[k];
+            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size", "app", "app_icon", "show_track"]) if (!(k in tpl)) delete draft[k];
             render();
           }) }),
           h("div", { class: "help", text: (draft.active || draft.toggle) ? "Links normal, rechts im aktiven Zustand." : "Vorschau" }))),
@@ -1591,6 +1634,11 @@ function appearanceSection(draft, render, updatePreview) {
         h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!draft.image_fill, onchange: (e) => { draft.image_fill = e.target.checked; updatePreview(); } }), "Bild füllt die ganze Taste"),
         h("button", { class: "btn small danger", text: "Bild entfernen", onclick: () => { delete draft.image; delete draft.image_fill; render(); } })) : null),
     appLogoField(draft, render, updatePreview),
+    h("div", { class: "field" }, h("label", { text: "Songtitel anzeigen" }),
+      h("select", { value: draft.show_track === true ? "on" : draft.show_track === false ? "off" : "", onchange: (e) => {
+        if (e.target.value === "on") draft.show_track = true; else if (e.target.value === "off") draft.show_track = false; else delete draft.show_track;
+        updatePreview();
+      } }, [["", "Automatisch (Spotify-Play/Pause, -Fader und -Öffnen)"], ["on", "Immer anzeigen"], ["off", "Nie anzeigen"]].map(([v, l]) => h("option", { value: v, text: l })))),
     h("div", { class: "field" }, h("label", { text: "Farbe" }), swatches),
     h("div", { class: "row" },
       h("div", { class: "field" }, h("label", { text: "Art der Kachel" }),

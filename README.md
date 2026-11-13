@@ -17,7 +17,7 @@ Programme, Tastenkombinationen und vieles mehr per Fingertipp.
 |---|---|
 | **OBS Studio** | Szene wechseln, Aufnahme/Stream starten und stoppen, Aufnahme pausieren, Audioquellen stumm schalten, Quellen ein- und ausblenden, virtuelle Kamera, Replay-Puffer und Replay speichern, Studio-Modus und Übergang, Screenshot. **Live-Status** auf den Tasten, dazu eine automatisch erzeugte Seite mit allen Szenen. |
 | **Discord** | Mikro stumm, Ton aus („taub“), **Push-to-Talk** (solange du die Taste hältst). Tasten direkt am Tablet festlegen und per „An PC senden“ in Discord einlernen. |
-| **Spotify** | Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, **Lautstärke direkt in der Spotify-App**, „Gefällt mir“, **„Läuft gerade“ mit Cover** |
+| **Spotify** | Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, **Lautstärke direkt in der Spotify-App**, „Gefällt mir“, **„Läuft gerade“ mit Cover**, **aktueller Songtitel als Lauftext** auf Play/Pause-, Öffnen- und Fader-Kacheln (pro Taste im Editor unter „Songtitel anzeigen“ einstellbar) |
 | **Ton** | **Schiebefader** für alles, was Ton abspielt: eigene Seite **„Mixer“** (zeigt automatisch PC, Mikrofon, Spotify, Discord, Browser, Spiele … und OBS-Audioquellen) sowie Fader-Kacheln für jede Seite. Dazu PC-Lautstärke ±/stumm, Lautstärke pro Programm, Windows-Mikrofon stumm. |
 | **Allgemein** | Beliebige Tastenkombinationen (auch gehalten), Text schreiben, Programme, Dateien und Websites öffnen, Befehle ausführen, PC sperren, Monitor aus, Energiesparen, Neustart, Herunterfahren (mit Sicherheitsabfrage) |
 | **Mehrfach-Aktionen** | Eine Taste kann mehrere Aktionen nacheinander ausführen, mit Wartezeit dazwischen. |

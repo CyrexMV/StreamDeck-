@@ -140,6 +140,8 @@ class MediaController:
                 "spotify_running": spotify is not None,
                 "spotify_playing": is_playing(spotify) if spotify is not None else False,
                 "spotify_shuffle": False,
+                "spotify_title": "",
+                "spotify_artist": "",
                 "title": "",
                 "artist": "",
                 "app": "",
@@ -148,6 +150,12 @@ class MediaController:
             if spotify is not None:
                 try:
                     state["spotify_shuffle"] = bool(spotify.get_playback_info().is_shuffle_active)
+                except Exception:
+                    pass
+                try:  # Songtitel von Spotify – auch wenn gerade ein anderes Programm im Vordergrund spielt
+                    sp_props = await spotify.try_get_media_properties_async()
+                    state["spotify_title"] = sp_props.title or ""
+                    state["spotify_artist"] = sp_props.artist or ""
                 except Exception:
                     pass
             if shown is None:

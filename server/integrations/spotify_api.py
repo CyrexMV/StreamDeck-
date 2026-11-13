@@ -193,10 +193,15 @@ class SpotifyAPI:
         device = (player or {}).get("device") or {}
         item = (player or {}).get("item") or {}
         new = dict(self.state)
+        artists = ", ".join(a.get("name", "") for a in item.get("artists") or []) or (item.get("show") or {}).get("name", "")
+        images = (item.get("album") or {}).get("images") or item.get("images") or []
+        images = sorted((i for i in images if str(i.get("url", "")).startswith("https://")), key=lambda i: abs((i.get("width") or 300) - 300))
         new.update(
             connected=True, error=None, device=device.get("name"),
             volume=device.get("volume_percent") if device.get("supports_volume", True) else None,
             track_id=item.get("id"),
+            title=item.get("name") or None, artist=artists or None,
+            cover=images[0]["url"] if images else None, playing=bool((player or {}).get("is_playing")),
         )
         if item.get("id") and item.get("id") != self.state.get("track_id"):
             try:

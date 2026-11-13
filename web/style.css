@@ -366,3 +366,20 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .strip .f-logo { width: 36px; height: 36px; }
 .app-found { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #4cc38a; }
 .app-found img { width: 28px; height: 28px; object-fit: contain; }
+
+/* -------------------------------------------------------------- Songtitel */
+.track, .f-song {
+  position: relative; display: block; width: 90%; overflow: hidden; white-space: nowrap; text-align: center;
+  font-size: calc(var(--cell) * .082); font-weight: 600; opacity: .9; line-height: 1.3; text-overflow: ellipsis;
+}
+.f-song { width: 100%; font-size: calc(var(--cell) * .075); opacity: .8; }
+.track.scroll:not(.paused), .f-song.scroll:not(.paused) {
+  text-align: left; text-overflow: clip;
+  mask-image: linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+}
+.track.scroll:not(.paused) > span, .f-song.scroll:not(.paused) > span {
+  display: inline-block; animation: marquee var(--dur, 10s) linear 1.5s infinite;
+}
+.track.paused, .f-song.paused { opacity: .55; }
+.face .track { margin-top: -3%; }
+@keyframes marquee { to { transform: translateX(-50%); } }
