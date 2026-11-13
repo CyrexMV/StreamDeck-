@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "settings": {
     "columns": 8,
     "rows": 4,
@@ -370,6 +370,12 @@
           ]
         }
       }
+    },
+    {
+      "id": "mixer",
+      "name": "Mixer",
+      "type": "mixer",
+      "buttons": {}
     },
     {
       "id": "obs",
@@ -1101,11 +1107,32 @@
           }
         },
         "20": {
-          "label": "",
+          "label": "PC",
           "icon": "🔊",
-          "color": "#1b1e25",
+          "color": "#7c5cff",
           "actions": [],
-          "widget": "volume"
+          "widget": "fader",
+          "fader": {
+            "target": "master"
+          },
+          "size": {
+            "w": 1,
+            "h": 2
+          }
+        },
+        "21": {
+          "label": "Mikrofon",
+          "icon": "🎤",
+          "color": "#2a2e37",
+          "actions": [],
+          "widget": "fader",
+          "fader": {
+            "target": "mic"
+          },
+          "size": {
+            "w": 1,
+            "h": 2
+          }
         },
         "22": {
           "label": "",

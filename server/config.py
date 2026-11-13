@@ -32,7 +32,7 @@ DEFAULT_SETTINGS = {
     "radius": 18,
     "discord": {"mute": "f14", "deafen": "f15", "ptt": "f13"},
 }
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 DEFAULT_OBS = {"enabled": True, "host": "127.0.0.1", "port": 4455, "password": ""}
 
 
@@ -122,6 +122,13 @@ class ConfigStore:
                 d["deafen"] = "f15"
             if changed:
                 log.info("%d Spotify-Lautstärke-Tasten auf die Spotify-App-Lautstärke umgestellt", changed)
+        if version < 3:
+            # Neue automatische Mixer-Seite mit Schiebefadern für alles, was Ton abspielt
+            pages = self.data.setdefault("pages", [])
+            if not any(p.get("type") == "mixer" for p in pages):
+                pid = "mixer" if not any(p.get("id") == "mixer" for p in pages) else "mixer-auto"
+                pages.insert(min(1, len(pages)), {"id": pid, "name": "Mixer", "type": "mixer", "buttons": {}})
+                log.info("Neue Seite „Mixer“ mit Schiebefadern hinzugefügt")
         self.data["version"] = CONFIG_VERSION
 
     def save(self) -> None:

@@ -294,3 +294,63 @@ body.dragging .slot.empty { border-color: var(--panel3); }
 .slot.drop-target.empty { border-color: var(--acc); background: rgba(124,92,255,.12); }
 .tab.drop-target { background: var(--acc); color: #fff; }
 body.dragging, body.dragging * { cursor: grabbing !important; }
+
+/* ------------------------------------------------------------------ Fader */
+.fader {
+  position: absolute; inset: 0; display: grid; gap: 5%; padding: 9% 8%;
+  color: var(--f, #fff); touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.fader.v { grid-template-rows: auto minmax(0, 1fr) auto; justify-items: center; }
+.fader.h { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding: 6% 5%; gap: 4%; }
+.f-head { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; max-width: 100%; position: relative; }
+.fader.h .f-head { max-width: 30%; }
+.f-icon { font-size: calc(var(--cell) * .19); line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,.3)); }
+.f-label { font-size: calc(var(--cell) * .095); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.f-track { position: relative; border-radius: 999px; background: rgba(0,0,0,.38); box-shadow: inset 0 2px 6px rgba(0,0,0,.45); cursor: ns-resize; }
+.fader.v .f-track { width: 30%; min-width: 22px; max-width: 44px; height: 100%; }
+.fader.h .f-track { height: 30%; min-height: 18px; max-height: 40px; width: 100%; cursor: ew-resize; }
+.f-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: var(--v); border-radius: inherit;
+  background: linear-gradient(to top, rgba(255,255,255,.55), rgba(255,255,255,.92));
+}
+.fader.h .f-fill { top: 0; right: auto; width: var(--v); height: auto; background: linear-gradient(to right, rgba(255,255,255,.55), rgba(255,255,255,.92)); }
+.f-knob {
+  position: absolute; left: 50%; bottom: var(--v); width: 170%; height: 14px; border-radius: 8px;
+  background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.55); transform: translate(-50%, 50%);
+  transition: transform .1s;
+}
+.fader.h .f-knob { left: var(--v); top: 50%; bottom: auto; width: 14px; height: 170%; transform: translate(-50%, -50%); }
+.fader.dragging .f-knob { transform: translate(-50%, 50%) scale(1.18); }
+.fader.h.dragging .f-knob { transform: translate(-50%, -50%) scale(1.18); }
+.f-foot { display: flex; align-items: center; justify-content: center; gap: 6px; position: relative; }
+.fader.v .f-foot { gap: 6px; }
+.fader.compact { padding: 7% 7% 6%; gap: 4%; }
+.fader.compact .f-label { display: none; }
+.fader.compact .f-icon { font-size: calc(var(--cell) * .15); }
+.fader.compact .f-mute { font-size: calc(var(--cell) * .11); padding: 3px 6px; min-width: 30px; min-height: 26px; }
+.f-val { font-size: calc(var(--cell) * .095); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.f-mute {
+  border: 0; border-radius: 10px; background: rgba(0,0,0,.28); color: inherit; line-height: 1;
+  font-size: calc(var(--cell) * .14); padding: 5px 10px; min-width: 40px; min-height: 34px;
+}
+.fader.muted .f-fill { background: rgba(255,255,255,.22); }
+.fader.muted .f-mute { background: var(--danger); }
+.fader.off .f-track, .fader.off .f-head { opacity: .45; }
+.fader.off .f-val { font-size: calc(var(--cell) * .08); opacity: .8; font-weight: 600; }
+.face.fader-face { gap: 0; }
+body.editing .face.fader-face .fader { pointer-events: none; }
+
+/* ------------------------------------------------------------ Mixer-Seite */
+#grid.mixer-mode {
+  display: flex; gap: var(--gap); width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden;
+  touch-action: pan-x; align-items: stretch; padding-bottom: 4px; scrollbar-width: thin;
+}
+.strip {
+  --cell: 128px; position: relative; flex: 1 0 116px; max-width: 160px; border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel3), var(--panel2)); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 6px 16px rgba(0,0,0,.35);
+}
+.strip.obs { background: linear-gradient(180deg, #343946, #262a33); }
+.strip .fader { padding: 14px 10px; }
+.strip-tag { position: absolute; top: 8px; right: 10px; font-size: 11px; font-weight: 700; opacity: .55; letter-spacing: .05em; }
+.mixer-note { align-self: center; color: var(--muted); font-size: 14px; padding: 0 16px; max-width: 320px; }

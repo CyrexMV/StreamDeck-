@@ -38,6 +38,8 @@ class SpotifyAPI:
         self._target_volume: int | None = None
         self._target_time = 0.0
         self._muted_volume: int | None = None
+        self._pending_volume: int | None = None
+        self._volume_sending = False
         self.state: dict = {}
         self._reset_state()
 
@@ -238,6 +240,26 @@ class SpotifyAPI:
         self._target_volume, self._target_time = target, time.monotonic()
         await self.api("PUT", "/me/player/volume", {"volume_percent": str(int(target))})
         self.state["volume"] = target
+        await self._on_change()
+
+    async def set_volume(self, percent: float) -> None:
+        """Für Fader: schnelle Folgewerte zusammenfassen, nur der neueste wird gesendet."""
+        if self._s.get("premium") is False:
+            raise ActionError("Die Spotify-Lautstärke lässt sich nur mit Spotify Premium steuern")
+        target = int(max(0, min(100, round(float(percent)))))
+        self._pending_volume = target
+        self._target_volume, self._target_time = target, time.monotonic()
+        self.state["volume"] = target
+        if self._volume_sending:
+            return  # der laufende Sender übernimmt den neuesten Wert
+        self._volume_sending = True
+        try:
+            while self._pending_volume is not None:
+                value, self._pending_volume = self._pending_volume, None
+                await self.api("PUT", "/me/player/volume", {"volume_percent": str(value)})
+        finally:
+            self._volume_sending = False
+            self._pending_volume = None
         await self._on_change()
 
     async def toggle_like(self) -> None:

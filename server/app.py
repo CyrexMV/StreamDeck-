@@ -339,6 +339,12 @@ class DeckServer:
         if method == "obs_reconnect":
             self.obs.restart()
             return True
+        if method == "set_volume":
+            await self._set_channel(p, float(p.get("value", 0)))
+            return True
+        if method == "mute_channel":
+            await self._mute_channel(p)
+            return True
         if method == "send_keys":
             # Tastenkombination (nach Countdown) senden – z. B. zum Aufnehmen in Discord
             await asyncio.sleep(max(0.0, min(10.0, float(p.get("delay") or 0))))
@@ -410,6 +416,44 @@ class DeckServer:
     async def _on_obs_change(self, obs_state: dict) -> None:
         self.state["obs"] = obs_state
         await self.broadcast_state("obs")
+
+    # ---------------------------------------------------------------- Fader
+    async def _set_channel(self, ch: dict, value: float) -> None:
+        kind = ch.get("kind")
+        if kind in ("master", "mic", "app"):
+            if not self.audio.available:
+                raise ActionError(self.audio.error or "Lautstärkesteuerung nicht verfügbar")
+            await self.audio.apply(kind, ch.get("app", ""), "set", max(0.0, min(100.0, value)))
+            self._schedule_audio_refresh()
+        elif kind == "spotify":
+            await self.spotify.set_volume(value)
+        elif kind == "obs":
+            await self.obs.set_input_volume(ch.get("input", ""), value)
+        else:
+            raise ActionError(f"Unbekannter Fader: {kind}")
+
+    async def _mute_channel(self, ch: dict) -> None:
+        kind = ch.get("kind")
+        if kind in ("master", "mic", "app"):
+            await self.audio.apply(kind, ch.get("app", ""), "toggle_mute", 0)
+            await self.refresh_audio()
+        elif kind == "spotify":
+            await self.spotify.volume("mute_toggle", 0)
+        elif kind == "obs":
+            await self.obs.action("mute_toggle", {"input": ch.get("input")})
+        else:
+            raise ActionError(f"Unbekannter Fader: {kind}")
+
+    def _schedule_audio_refresh(self) -> None:
+        """Beim Ziehen nicht nach jedem Wert alle Programme abfragen – kurz sammeln."""
+        if getattr(self, "_audio_refresh", None) and not self._audio_refresh.done():
+            return
+
+        async def later() -> None:
+            await asyncio.sleep(0.3)
+            await self.refresh_audio()
+
+        self._audio_refresh = asyncio.create_task(later())
 
     async def _on_spotify_change(self) -> None:
         self.state["spotify"] = self.spotify.state

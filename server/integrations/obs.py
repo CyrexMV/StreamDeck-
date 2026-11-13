@@ -30,6 +30,15 @@ class OBSError(ActionError):
     pass
 
 
+def _db(value) -> float:
+    """OBS liefert für „stumm“ (Faktor 0) -inf bzw. null – auf −100 dB abbilden."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return -100.0
+    return -100.0 if v != v or v < -100 else round(v, 1)
+
+
 class OBSClient:
     RECONNECT_DELAY = 3
 
@@ -51,6 +60,7 @@ class OBSClient:
             "scenes": [],
             "inputs": [],
             "muted": {},
+            "volumes": {},
             "sources": {},
             "recording": False,
             "record_paused": False,
@@ -276,6 +286,15 @@ class OBSClient:
         results = await asyncio.gather(*(mute_state(n) for n in names))
         self.state["muted"] = {n: m for n, m in results if m is not None}
         self.state["inputs"] = [n for n, m in results if m is not None]
+
+        async def volume(name: str):
+            try:
+                return name, _db((await self.request("GetInputVolume", {"inputName": name})).get("inputVolumeDb"))
+            except OBSError:
+                return name, None
+
+        vols = await asyncio.gather(*(volume(n) for n in self.state["inputs"]))
+        self.state["volumes"] = {n: v for n, v in vols if v is not None}
         self._notify()
 
     # ---------------------------------------------------------------- Events
@@ -300,6 +319,8 @@ class OBSClient:
             s["replay_buffer"] = bool(data.get("outputActive"))
         elif event == "StudioModeStateChanged":
             s["studio_mode"] = bool(data.get("studioModeEnabled"))
+        elif event == "InputVolumeChanged":
+            s["volumes"][data.get("inputName")] = _db(data.get("inputVolumeDb"))
         elif event == "InputMuteStateChanged":
             name = data.get("inputName")
             s["muted"][name] = bool(data.get("inputMuted"))
@@ -375,6 +396,20 @@ class OBSClient:
             await self._screenshot()
         else:
             raise OBSError(f"Unbekannte OBS-Aktion: {op}")
+
+    async def set_input_volume(self, name: str, percent: float) -> None:
+        """Fader 0–100 % → OBS-Lautstärke (0 % = aus, sonst −60 dB … 0 dB wie der OBS-Mixer)."""
+        if not name:
+            raise OBSError("Keine Audioquelle ausgewählt")
+        percent = max(0.0, min(100.0, float(percent)))
+        if percent <= 0:
+            await self.request("SetInputVolume", {"inputName": name, "inputVolumeMul": 0.0})
+            db = -100.0
+        else:
+            db = round((percent - 100.0) * 0.6, 1)
+            await self.request("SetInputVolume", {"inputName": name, "inputVolumeDb": db})
+        self.state["volumes"][name] = db
+        self._notify()
 
     async def _screenshot(self) -> None:
         """Speichert ein Bild der aktuellen Szene im Aufnahme-Ordner von OBS."""

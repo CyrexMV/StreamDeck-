@@ -18,7 +18,7 @@ Programme, Tastenkombinationen und vieles mehr per Fingertipp.
 | **OBS Studio** | Szene wechseln, Aufnahme/Stream starten und stoppen, Aufnahme pausieren, Audioquellen stumm schalten, Quellen ein- und ausblenden, virtuelle Kamera, Replay-Puffer und Replay speichern, Studio-Modus und Übergang, Screenshot. **Live-Status** auf den Tasten, dazu eine automatisch erzeugte Seite mit allen Szenen. |
 | **Discord** | Mikro stumm, Ton aus („taub“), **Push-to-Talk** (solange du die Taste hältst). Tasten direkt am Tablet festlegen und per „An PC senden“ in Discord einlernen. |
 | **Spotify** | Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, **Lautstärke direkt in der Spotify-App**, „Gefällt mir“, **„Läuft gerade“ mit Cover** |
-| **Ton** | PC-Lautstärke ±/stumm/fester Wert, **Lautstärke pro Programm**, Windows-Mikrofon stumm |
+| **Ton** | **Schiebefader** für alles, was Ton abspielt: eigene Seite **„Mixer“** (zeigt automatisch PC, Mikrofon, Spotify, Discord, Browser, Spiele … und OBS-Audioquellen) sowie Fader-Kacheln für jede Seite. Dazu PC-Lautstärke ±/stumm, Lautstärke pro Programm, Windows-Mikrofon stumm. |
 | **Allgemein** | Beliebige Tastenkombinationen (auch gehalten), Text schreiben, Programme, Dateien und Websites öffnen, Befehle ausführen, PC sperren, Monitor aus, Energiesparen, Neustart, Herunterfahren (mit Sicherheitsabfrage) |
 | **Mehrfach-Aktionen** | Eine Taste kann mehrere Aktionen nacheinander ausführen, mit Wartezeit dazwischen. |
 | **Ordner & Seiten** | Beliebig viele Seiten, Ordner-Tasten, Zurück-Taste |
@@ -131,6 +131,13 @@ Weitere nützliche Ziele für „Öffnen“: `spotify:`, `discord://`, `steam://
 - auf eine andere Kachel: Beide tauschen den Platz.
 - auf einen **Seiten-Reiter** oben: Loslassen legt sie ins erste freie Feld dieser Seite. Kurz darüber **halten**
   öffnet die Seite, dann kannst du sie dort genau platzieren.
+
+**Schiebefader:** Auf der Seite **„Mixer“** erscheint für jedes Programm, das gerade Ton abspielt, automatisch ein
+Fader. Den Regler mit dem Finger hoch- oder runterschieben. Antippen allein verändert nichts, damit es nie plötzlich laut
+wird. 🔊/🔇 unten schaltet stumm. Einzelne Fader legst du auf jede Seite: im Editor bei **„Art der Kachel“** →
+*Schiebefader* (oder Vorlage „Schiebefader“), dann wählen, was er steuert. Bei **„Größe“** z. B. *1 breit × 3 hoch*
+für einen langen Fader. Dafür müssen die Felder darunter frei sein. Eine weitere Mixer-Seite gibt es unter
+⚙️ → Seiten → „Mixer-Seite hinzufügen“.
 
 Seiten, Rastergröße, Abstände und mehr findest du unter **⚙️ Einstellungen**. Dort gibt es unter *Sicherung* auch den
 **Export** und **Import** deiner kompletten Belegung.

@@ -158,7 +158,17 @@ const ACTIONS = {
 const CLIENT_ACTIONS = new Set(["page", "back", "home"]);
 
 const WIDGETS = [["", "Keine (normale Taste)"], ["clock", "Uhr"], ["cpu", "CPU-Auslastung"], ["ram", "Arbeitsspeicher"],
-  ["volume", "PC-Lautstärke"], ["nowplaying", "Läuft gerade (Cover)"]];
+  ["volume", "PC-Lautstärke (Anzeige)"], ["nowplaying", "Läuft gerade (Cover)"], ["fader", "🎚️ Schiebefader (Lautstärke)"]];
+const SIZES = [["1x1", "1 × 1 (normal)"], ["1x2", "1 breit × 2 hoch"], ["1x3", "1 breit × 3 hoch"], ["1x4", "1 breit × 4 hoch"],
+  ["2x1", "2 breit × 1 hoch"], ["3x1", "3 breit × 1 hoch"], ["4x1", "4 breit × 1 hoch"], ["2x2", "2 × 2"]];
+const FADER_FIELDS = [
+  { k: "target", label: "Fader steuert", type: "select", options: [["master", "PC-Lautstärke"], ["mic", "Mikrofon (Windows)"],
+    ["spotify", "Spotify-App (echte App-Lautstärke)"], ["app", "Einzelnes Programm (Windows-Mixer)"], ["obs", "OBS-Audioquelle"]] },
+  { k: "app", label: "Programm", type: "datalist", source: "audioApps", ph: "z. B. Discord.exe", show: (a) => a.target === "app",
+    help: "Programme erscheinen in der Liste, sobald sie Ton abspielen. Name auch eintippbar (z. B. Discord.exe, chrome.exe)." },
+  { k: "input", label: "OBS-Audioquelle", type: "datalist", source: "obsInputs", show: (a) => a.target === "obs" },
+  { k: "_hint", type: "info", show: (a) => a.target === "spotify", html: "Benötigt die Spotify-Verbindung unter ⚙️ Einstellungen → Spotify (Premium)." },
+];
 
 /* --------------------------------------------------------------- Vorlagen */
 const T = (label, icon, color, actions, extra = {}) => ({ label, icon, color, actions, ...extra });
@@ -205,6 +215,14 @@ const TEMPLATES = [
     T("Website", "🌐", C.sys, [{ type: "open", target: "https://" }]),
     T("Text", "📝", C.grey, [{ type: "text", text: "", enter: false }]),
   ] },
+  { group: "Schiebefader", items: [
+    T("PC", "🔊", C.vol, [], { widget: "fader", fader: { target: "master" }, size: { w: 1, h: 2 } }),
+    T("Mikrofon", "🎤", C.grey, [], { widget: "fader", fader: { target: "mic" }, size: { w: 1, h: 2 } }),
+    T("Spotify", "🎧", C.spotify, [], { widget: "fader", fader: { target: "spotify" }, size: { w: 1, h: 2 } }),
+    T("Discord", "💬", C.discord, [], { widget: "fader", fader: { target: "app", app: "Discord.exe" }, size: { w: 1, h: 2 } }),
+    T("Browser", "🌐", C.sys, [], { widget: "fader", fader: { target: "app", app: "chrome.exe" }, size: { w: 1, h: 2 } }),
+    T("OBS-Mikro", "🎙️", C.obs, [], { widget: "fader", fader: { target: "obs", input: "Mikrofon/AUX" }, size: { w: 1, h: 2 } }),
+  ] },
   { group: "Anzeigen & Navigation", items: [
     T("", "🕒", C.dark, [], { widget: "clock" }),
     T("", "🧠", C.dark, [], { widget: "cpu" }),
@@ -227,6 +245,9 @@ const App = {
   history: [],
   editing: false,
   transposed: false,
+  spans: {},
+  faderDrag: null,
+  faderLocal: {},
   moveFrom: null,
   rpcSeq: 0,
   rpcPending: new Map(),
@@ -387,41 +408,78 @@ function renderTabs() {
     h("button", { class: "tab" + (p.id === App.pageId ? " active" : ""), text: p.name, "data-page": p.id, onclick: () => gotoPage(p.id, true) })));
 }
 
+/* Mehrfeldrige Kacheln: wie weit darf jede Kachel wachsen, ohne andere zu überdecken? */
+function spanLayout(page, s) {
+  const cols = s.columns, rows = s.rows, covered = new Set(), spans = {};
+  const occupied = (i) => !!page.buttons[String(i)];
+  for (let i = 0; i < cols * rows; i++) {
+    const btn = page.buttons[String(i)];
+    if (!btn || covered.has(i)) continue;
+    const want = btn.size || {};
+    const w = Math.max(1, Math.min(4, Number(want.w) || 1)), hh = Math.max(1, Math.min(4, Number(want.h) || 1));
+    const r = Math.floor(i / cols), c = i % cols;
+    const free = (rr, cc) => rr < rows && cc < cols && !covered.has(rr * cols + cc) && !occupied(rr * cols + cc);
+    let ew = 1;
+    while (ew < w && free(r, c + ew)) ew++;
+    let eh = 1;
+    while (eh < hh && Array.from({ length: ew }, (_, k) => free(r + eh, c + k)).every(Boolean)) eh++;
+    for (let dr = 0; dr < eh; dr++) for (let dc = 0; dc < ew; dc++) if (dr || dc) covered.add((r + dr) * cols + c + dc);
+    spans[i] = { w: ew, h: eh };
+  }
+  return { spans, covered };
+}
+
 function renderGrid() {
   const grid = $("#grid");
   const s = S();
   const page = currentPage();
+  document.body.classList.toggle("editing", App.editing);
+  document.body.classList.toggle("moving", App.moveFrom !== null);
+  $("#edithint").hidden = !App.editing;
+  $("#edithint span").textContent = page.type === "mixer"
+    ? "Der Mixer zeigt automatisch alles, was gerade Ton abspielt – hier gibt es keine Kacheln zum Bearbeiten."
+    : App.moveFrom !== null
+      ? "Tippe auf das Ziel-Feld, um die Taste dorthin zu verschieben."
+      : "Bearbeiten: Taste antippen zum Ändern – festhalten und ziehen zum Verschieben (auch auf einen Seiten-Reiter).";
+  $("#btn-edit").classList.toggle("on", App.editing);
+  if (page.type === "mixer") { renderMixer(true); return; }
+  grid.classList.remove("mixer-mode");
+  grid._sig = null;
+
+  const { spans, covered } = spanLayout(page, s);
+  App.spans = spans;
   const count = s.columns * s.rows;
   const slots = [];
   for (let i = 0; i < count; i++) {
+    if (covered.has(i)) continue;
     const btn = page.buttons[String(i)];
     const el = h("div", { class: "slot" + (btn ? "" : " empty"), "data-slot": String(i) });
     if (btn) { el._html = faceHTML(btn, page.id, i); el.innerHTML = el._html; }
     if (App.moveFrom === i) el.classList.add("move-src");
     if (App.drag && App.drag.page === page.id && App.drag.slot === i) el.classList.add("drag-src");
+    const r = Math.floor(i / s.columns), c = i % s.columns;
+    const sp = spans[i] || { w: 1, h: 1 };
     if (App.transposed) {
-      el.style.gridRow = String((i % s.columns) + 1);
-      el.style.gridColumn = String(Math.floor(i / s.columns) + 1);
+      el.style.gridRow = `${c + 1} / span ${sp.w}`;
+      el.style.gridColumn = `${r + 1} / span ${sp.h}`;
+    } else {
+      el.style.gridRow = `${r + 1} / span ${sp.h}`;
+      el.style.gridColumn = `${c + 1} / span ${sp.w}`;
     }
     slots.push(el);
   }
   grid.replaceChildren(...slots);
-  document.body.classList.toggle("editing", App.editing);
-  document.body.classList.toggle("moving", App.moveFrom !== null);
-  $("#edithint").hidden = !App.editing;
-  $("#edithint span").textContent = App.moveFrom !== null
-    ? "Tippe auf das Ziel-Feld, um die Taste dorthin zu verschieben."
-    : "Bearbeiten: Taste antippen zum Ändern – festhalten und ziehen zum Verschieben (auch auf einen Seiten-Reiter).";
-  $("#btn-edit").classList.toggle("on", App.editing);
 }
 
 function refreshFaces() {
   if (!App.config) return;
   const page = currentPage();
+  if (page.type === "mixer") { renderMixer(false); return; }
   for (const el of document.querySelectorAll("#grid .slot:not(.empty)")) {
     const slot = el.dataset.slot;
     const btn = page.buttons[slot];
     if (!btn) continue;
+    if (App.faderDrag && el.querySelector(".fader.dragging")) continue;
     const html = faceHTML(btn, page.id, slot);
     if (el._html !== html) { el.innerHTML = html; el._html = html; }
   }
@@ -568,7 +626,13 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
   const label = alt.label || btn.label || "";
   const showLabels = S().show_labels !== false;
   let inner, cls = "face";
-  if (btn.widget) {
+  if (btn.widget === "fader") {
+    const sp = (App.spans || {})[slot] || btn.size || { w: 1, h: 1 };
+    const vh = App.transposed ? sp.w : sp.h, vw = App.transposed ? sp.h : sp.w;
+    const ch = faderChannel(btn);
+    inner = faderHTML(ch, { label: label || channelName(ch), icon: ico || "🔊", vertical: (vh || 1) >= (vw || 1), compact: ((vh || 1) === 1 && (vw || 1) === 1) || ((vw || 1) === 2 && (vh || 1) === 1) });
+    cls += " fader-face";
+  } else if (btn.widget) {
     inner = widgetHTML(btn, label);
   } else {
     const visual = btn.image
@@ -585,6 +649,221 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
     if (pulsing) cls += " pulse";
   }
   return `<div class="${cls}" style="--b:${color};--f:${fg}">${inner}</div>`;
+}
+
+/* ================================================================== Fader */
+const APP_NAMES = { spotify: "Spotify", discord: "Discord", chrome: "Chrome", msedge: "Edge", firefox: "Firefox", opera: "Opera",
+  brave: "Brave", obs64: "OBS", steam: "Steam", steamwebhelper: "Steam", "ms-teams": "Teams", teams: "Teams", zoom: "Zoom",
+  vlc: "VLC", wmplayer: "Media Player", explorer: "Explorer", applemusic: "Apple Music", itunes: "iTunes" };
+const APP_ICONS = { spotify: "🎧", discord: "💬", chrome: "🌐", msedge: "🌐", firefox: "🌐", opera: "🌐", brave: "🌐",
+  obs64: "🎬", steam: "🎮", steamwebhelper: "🎮", "ms-teams": "📞", teams: "📞", zoom: "📞", vlc: "🎞️", wmplayer: "🎞️" };
+const prettyApp = (name) => { const k = appKey(name); return APP_NAMES[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : "Programm"); };
+const chKey = (ch) => `${ch.kind}:${ch.kind === "app" ? appKey(ch.app) : ch.input || ""}`;
+const dbToPct = (db) => (db == null || db <= -60 ? 0 : Math.round(100 + db / 0.6));
+const pctToDb = (p) => (p <= 0 ? -100 : Math.round((p - 100) * 6) / 10);
+const fmtDb = (db) => (db <= -60 ? "−∞ dB" : `${db.toFixed(1).replace("-", "−")} dB`);
+
+function faderChannel(btn) {
+  const f = btn.fader || {};
+  const kind = f.target || "master";
+  if (kind === "app") return { kind, app: f.app || "" };
+  if (kind === "obs") return { kind, input: f.input || "" };
+  return { kind };
+}
+
+function channelName(ch) {
+  return { master: "PC", mic: "Mikrofon", spotify: "Spotify-App", app: prettyApp(ch.app), obs: ch.input || "OBS" }[ch.kind] || "Lautstärke";
+}
+
+function channelState(ch) {
+  const st = App.state;
+  const au = st.audio || {};
+  switch (ch.kind) {
+    case "master": case "mic": {
+      const t = au[ch.kind];
+      if (au.available === false) return { level: null, note: "nur unter Windows" };
+      return t ? { level: t.level, muted: t.muted } : { level: null, note: ch.kind === "mic" ? "kein Mikrofon" : "–" };
+    }
+    case "app": {
+      if (au.available === false) return { level: null, note: "nur unter Windows" };
+      const t = (au.apps || {})[appKey(ch.app)];
+      return t ? { level: t.level, muted: t.muted } : { level: null, note: "spielt keinen Ton" };
+    }
+    case "spotify": {
+      const sp = st.spotify || {};
+      if (!sp.connected) return { level: null, note: "nicht verbunden" };
+      if (sp.volume == null) return { level: null, note: "kein Gerät aktiv" };
+      return { level: sp.volume, muted: sp.volume === 0 };
+    }
+    case "obs": {
+      const o = st.obs || {};
+      if (!o.connected) return { level: null, note: "OBS getrennt" };
+      const db = (o.volumes || {})[ch.input];
+      if (db == null) return { level: null, note: "Quelle fehlt" };
+      return { level: dbToPct(db), db, muted: !!(o.muted || {})[ch.input] };
+    }
+  }
+  return { level: null, note: "?" };
+}
+
+function channelView(ch) {
+  const s = channelState(ch);
+  const key = chKey(ch);
+  const loc = App.faderLocal[key];
+  if (loc && s.level != null && (App.faderDrag === key || Date.now() < loc.until)) {
+    return { ...s, level: loc.level, db: ch.kind === "obs" ? pctToDb(loc.level) : s.db };
+  }
+  return s;
+}
+
+function faderValueText(ch, v) {
+  if (v.level == null) return v.note;
+  return ch.kind === "obs" ? fmtDb(v.db ?? pctToDb(v.level)) : `${v.level}%`;
+}
+
+function faderHTML(ch, { label, icon, vertical, compact = false }) {
+  const v = channelView(ch);
+  const key = chKey(ch);
+  const lvl = v.level ?? 0;
+  const muteIco = v.muted ? (ch.kind === "mic" ? "🚫" : "🔇") : (ch.kind === "mic" ? "🎤" : "🔊");
+  const cls = `fader ${vertical ? "v" : "h"}${compact ? " compact" : ""}${v.muted ? " muted" : ""}${v.level == null ? " off" : ""}${App.faderDrag === key ? " dragging" : ""}`;
+  return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%">` +
+    `<div class="f-head"><span class="f-icon">${esc(icon)}</span><span class="f-label">${esc(label)}</span></div>` +
+    `<div class="f-track"><div class="f-fill"></div><div class="f-knob"></div></div>` +
+    `<div class="f-foot"><span class="f-val">${esc(faderValueText(ch, v))}</span>` +
+    (v.level == null ? "" : `<button class="f-mute" type="button" aria-label="Stumm schalten">${muteIco}</button>`) + `</div></div>`;
+}
+
+function updateFaderDom(key, ch, level) {
+  for (const f of document.querySelectorAll(`.fader[data-key="${CSS.escape(key)}"]`)) {
+    f.style.setProperty("--v", `${level}%`);
+    const val = f.querySelector(".f-val");
+    if (val) val.textContent = faderValueText(ch, { level, db: ch.kind === "obs" ? pctToDb(level) : null });
+  }
+}
+
+/* Fader ziehen: relativ zur Startposition (kein Sprung beim Antippen → keine plötzliche Lautstärke) */
+function setupFaders() {
+  const grid = $("#grid");
+  const INTERVAL = { spotify: 300, obs: 80 };
+  grid.addEventListener("pointerdown", (e) => {
+    const f = e.target.closest(".fader");
+    if (!f || f.closest(".preview")) return;
+    if (App.editing && !grid.classList.contains("mixer-mode")) return; // im Bearbeitungsmodus: Kachel bearbeiten/verschieben
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const ch = JSON.parse(f.dataset.ch);
+    const key = chKey(ch);
+    if (S().haptics !== false && navigator.vibrate) navigator.vibrate(8);
+    if (e.target.closest(".f-mute")) {
+      rpc("mute_channel", ch).catch((err) => toast(err.message, "error"));
+      return;
+    }
+    const v = channelView(ch);
+    if (v.level == null) { toast(`${f.dataset.label}: ${v.note}`, "error"); return; }
+    const track = f.querySelector(".f-track").getBoundingClientRect();
+    const vertical = f.classList.contains("v");
+    const len = Math.max(40, vertical ? track.height : track.width);
+    const startPos = vertical ? e.clientY : e.clientX;
+    const startLevel = v.level;
+    let last = startLevel, lastSent = 0, timer = null, moved = false, errorShown = false;
+    App.faderDrag = key;
+    f.classList.add("dragging");
+
+    const doSend = () => {
+      lastSent = Date.now();
+      rpc("set_volume", { ...ch, value: last }).catch((err) => {
+        if (!errorShown) toast(err.message, "error");
+        errorShown = true;
+        delete App.faderLocal[key];
+      });
+    };
+    const send = (final) => {
+      clearTimeout(timer);
+      const wait = (INTERVAL[ch.kind] || 50) - (Date.now() - lastSent);
+      if (final || wait <= 0) doSend();
+      else timer = setTimeout(doSend, wait);
+    };
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+      const pos = vertical ? ev.clientY : ev.clientX;
+      const delta = vertical ? startPos - pos : pos - startPos;
+      const lvl = Math.max(0, Math.min(100, Math.round(startLevel + (delta / len) * 100)));
+      if (lvl === last) return;
+      last = lvl;
+      moved = true;
+      App.faderLocal[key] = { level: lvl, until: Infinity };
+      updateFaderDom(key, ch, lvl);
+      send(false);
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      App.faderDrag = null;
+      document.querySelectorAll(`.fader[data-key="${CSS.escape(key)}"]`).forEach((x) => x.classList.remove("dragging"));
+      if (moved) {
+        App.faderLocal[key] = { level: last, until: Date.now() + 2500 };
+        send(true);
+      }
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+  }, true);
+}
+
+/* ------------------------------------------------------------------ Mixer */
+function mixerChannels() {
+  const st = App.state;
+  const list = [{ kind: "master", label: "PC", icon: "🔊" }];
+  if (st.audio?.mic) list.push({ kind: "mic", label: "Mikrofon", icon: "🎤" });
+  const spotifyApi = !!st.spotify?.connected;
+  if (spotifyApi) list.push({ kind: "spotify", label: "Spotify", icon: "🎧" });
+  const apps = Object.entries(st.audio?.apps || {}).sort((a, b) => prettyApp(a[1].name).localeCompare(prettyApp(b[1].name)));
+  for (const [k, a] of apps) {
+    if (k === "spotify" && spotifyApi) continue; // echte Spotify-App-Lautstärke wird schon angezeigt
+    list.push({ kind: "app", app: a.name, label: prettyApp(a.name), icon: APP_ICONS[k] || "🔊" });
+  }
+  const o = st.obs || {};
+  if (o.connected) for (const input of o.inputs || []) {
+    if ((o.volumes || {})[input] != null) list.push({ kind: "obs", input, label: input, icon: "🎬", group: "obs" });
+  }
+  return list;
+}
+
+function stripHTML(ch) {
+  const { label, icon, group, ...core } = ch;
+  return faderHTML(core, { label, icon, vertical: true }) + (group === "obs" ? `<span class="strip-tag">OBS</span>` : "");
+}
+
+function renderMixer(full) {
+  const grid = $("#grid");
+  grid.classList.add("mixer-mode");
+  App.spans = {};
+  const chans = mixerChannels();
+  const sig = chans.map((c) => chKey(c)).join("|");
+  if (full || grid._sig !== sig) {
+    grid._sig = sig;
+    const strips = chans.map((ch) => {
+      const el = h("div", { class: "strip" + (ch.group === "obs" ? " obs" : "") });
+      el._ch = ch;
+      el._html = stripHTML(ch);
+      el.innerHTML = el._html;
+      return el;
+    });
+    const note = App.state.audio?.available === false
+      ? h("div", { class: "mixer-note", text: "Programm-Lautstärken gibt es nur, wenn TabDeck unter Windows läuft." }) : null;
+    fill(grid, strips, note);
+    return;
+  }
+  for (const el of grid.querySelectorAll(".strip")) {
+    if (App.faderDrag === chKey(el._ch)) continue;
+    const html = stripHTML(el._ch);
+    if (el._html !== html) { el.innerHTML = html; el._html = html; }
+  }
 }
 
 /* ================================================================ Bedienung */
@@ -752,7 +1031,7 @@ function setupDrag() {
     hoverEl = t;
     t.classList.add("drop-target");
     // Kurz über einem Seiten-Reiter halten → Seite wechseln und dort genau platzieren
-    if (t.classList.contains("tab") && t.dataset.page !== App.pageId) {
+    if (t.classList.contains("tab") && t.dataset.page !== App.pageId && getPage(t.dataset.page)?.type !== "mixer") {
       tabTimer = setTimeout(() => {
         clearHover();
         setPage(t.dataset.page);
@@ -780,6 +1059,7 @@ function setupDrag() {
     if (!t) { renderGrid(); return; }
     if (t.classList.contains("tab")) {
       if (t.dataset.page === drag.page) { renderGrid(); return; }
+      if (getPage(t.dataset.page)?.type === "mixer") { toast("Auf die Mixer-Seite kann man keine Kacheln legen", "error"); renderGrid(); return; }
       moveButton(drag, { page: t.dataset.page, slot: null });
     } else {
       moveButton(drag, { page: App.pageId, slot: Number(t.dataset.slot) });
@@ -1123,7 +1403,7 @@ function openEditor(slot) {
         h("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
           h("button", { class: "btn", html: icon("grid") + "Vorlage wählen", onclick: () => openTemplates((tpl) => {
             Object.assign(draft, clone(tpl));
-            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget"]) if (!(k in tpl)) delete draft[k];
+            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size"]) if (!(k in tpl)) delete draft[k];
             render();
           }) }),
           h("div", { class: "help", text: (draft.active || draft.toggle) ? "Links normal, rechts im aktiven Zustand." : "Vorschau" }))),
@@ -1140,7 +1420,14 @@ function openEditor(slot) {
     const p = cfg.pages.find((x) => x.id === page.id);
     for (const a of draft.actions) if (a.type === "volume" && (a.step === "" || a.step == null)) a.step = a.op === "set" ? 50 : 5;
     p.buttons[String(slot)] = draft;
-    if (await saveConfig(cfg)) m.close();
+    if (await saveConfig(cfg)) {
+      m.close();
+      const want = draft.size || { w: 1, h: 1 };
+      const got = spanLayout(p, cfg.settings).spans[slot] || { w: 1, h: 1 };
+      if (got.w < want.w || got.h < want.h) {
+        toast(`Nicht genug freie Felder ${got.h < want.h ? "darunter" : "rechts daneben"} – die Kachel ist ${got.w} × ${got.h} statt ${want.w} × ${want.h}. Schiebe die Nachbarkachel weg, dann wächst sie automatisch.`, "error");
+      }
+    }
   };
   const remove = async () => {
     if (!existing) { m.close(); return; }
@@ -1218,9 +1505,24 @@ function appearanceSection(draft, render, updatePreview) {
         h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!draft.image_fill, onchange: (e) => { draft.image_fill = e.target.checked; updatePreview(); } }), "Bild füllt die ganze Taste"),
         h("button", { class: "btn small danger", text: "Bild entfernen", onclick: () => { delete draft.image; delete draft.image_fill; render(); } })) : null),
     h("div", { class: "field" }, h("label", { text: "Farbe" }), swatches),
-    h("div", { class: "field" }, h("label", { text: "Anzeige" }),
-      h("select", { value: draft.widget || "", onchange: (e) => { if (e.target.value) draft.widget = e.target.value; else delete draft.widget; render(); } },
-        WIDGETS.map(([v, l]) => h("option", { value: v, text: l })))),
+    h("div", { class: "row" },
+      h("div", { class: "field" }, h("label", { text: "Art der Kachel" }),
+        h("select", { value: draft.widget || "", onchange: (e) => {
+          if (e.target.value) draft.widget = e.target.value; else delete draft.widget;
+          if (draft.widget === "fader") {
+            draft.fader ||= { target: "master" };
+            if (!draft.size) draft.size = { w: 1, h: 2 };
+          } else delete draft.fader;
+          render();
+        } }, WIDGETS.map(([v, l]) => h("option", { value: v, text: l })))),
+      h("div", { class: "field" }, h("label", { text: "Größe" }),
+        h("select", { value: `${draft.size?.w || 1}x${draft.size?.h || 1}`, onchange: (e) => {
+          const [w, hh] = e.target.value.split("x").map(Number);
+          if (w === 1 && hh === 1) delete draft.size; else draft.size = { w, h: hh };
+        } }, SIZES.map(([v, l]) => h("option", { value: v, text: l }))))),
+    h("div", { class: "help", text: "Größere Kacheln belegen freie Nachbarfelder rechts bzw. darunter." }),
+    draft.widget === "fader" ? h("div", { class: "action-card", style: { marginTop: "12px" } },
+      FADER_FIELDS.filter((f) => !f.show || f.show(draft.fader)).map((f) => fieldEl(draft.fader, f, render, updatePreview))) : null,
   );
 }
 
@@ -1322,20 +1624,25 @@ function openSettings() {
     pages: () => {
       const rows = draft.pages.map((p, i) => h("div", { class: "page-row" },
         h("input", { type: "text", value: p.name, oninput: (e) => { p.name = e.target.value; } }),
+        p.type === "mixer" ? h("span", { class: "pill", text: "🎚️ Mixer" }) : null,
         h("label", { class: "check", title: "In der Seiten-Leiste anzeigen" }, h("input", { type: "checkbox", checked: !p.hidden, onchange: (e) => { if (e.target.checked) delete p.hidden; else p.hidden = true; } }), "Leiste"),
         h("button", { class: "icon-btn", html: icon("up"), disabled: i === 0, onclick: () => { [draft.pages[i - 1], draft.pages[i]] = [draft.pages[i], draft.pages[i - 1]]; show(); } }),
         h("button", { class: "icon-btn", html: icon("down"), disabled: i === draft.pages.length - 1, onclick: () => { [draft.pages[i + 1], draft.pages[i]] = [draft.pages[i], draft.pages[i + 1]]; show(); } }),
         h("button", { class: "icon-btn", html: icon("trash"), disabled: draft.pages.length < 2, onclick: async () => {
-          const n = Object.keys(p.buttons || {}).length;
+          const n = p.type === "mixer" ? 0 : Object.keys(p.buttons || {}).length;
           if (n && !(await confirmDialog(`Seite „${p.name}“ mit ${n} Tasten löschen?`, "Löschen"))) return;
           draft.pages.splice(i, 1); show();
         } })));
       return [h("div", { class: "section" }, h("h3", { text: "Seiten" }),
         h("p", { class: "help", text: "Die erste Seite ist die Startseite. Seiten ohne Häkchen bei „Leiste“ erreichst du über Ordner-Tasten (Aktion „Seite / Ordner öffnen“)." }),
         rows,
-        h("button", { class: "btn", html: icon("plus") + "Neue Seite", onclick: () => {
-          draft.pages.push({ id: "p-" + uid(), name: "Seite " + (draft.pages.length + 1), buttons: {} }); show();
-        } }))];
+        h("div", { class: "row wrap" },
+          h("button", { class: "btn", html: icon("plus") + "Neue Seite", onclick: () => {
+            draft.pages.push({ id: "p-" + uid(), name: "Seite " + (draft.pages.length + 1), buttons: {} }); show();
+          } }),
+          h("button", { class: "btn", text: "🎚️ Mixer-Seite hinzufügen", onclick: () => {
+            draft.pages.push({ id: "mixer-" + uid(), name: "Mixer", type: "mixer", buttons: {} }); show();
+          } })))];
     },
     obs: () => {
       const o = App.state.obs || {};
@@ -1553,6 +1860,7 @@ function init() {
   $("#btn-settings").onclick = () => App.config && openSettings();
   $("#btn-fullscreen").onclick = toggleFullscreen;
 
+  setupFaders();
   setupGrid();
   setupDrag();
   window.addEventListener("resize", layout);
