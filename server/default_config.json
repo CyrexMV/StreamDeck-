@@ -1,0 +1,1117 @@
+{
+  "settings": {
+    "columns": 8,
+    "rows": 4,
+    "show_tabs": true,
+    "show_labels": true,
+    "rotate_portrait": true,
+    "haptics": true,
+    "gap": 12,
+    "radius": 18,
+    "discord": {
+      "mute": "ctrl+shift+m",
+      "deafen": "ctrl+shift+d",
+      "ptt": "f13"
+    }
+  },
+  "obs": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 4455,
+    "password": ""
+  },
+  "pages": [
+    {
+      "id": "main",
+      "name": "Start",
+      "buttons": {
+        "0": {
+          "label": "",
+          "icon": "🎵",
+          "color": "#1b1e25",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "play_pause"
+            }
+          ],
+          "widget": "nowplaying"
+        },
+        "1": {
+          "label": "Zurück",
+          "icon": "⏮️",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "previous"
+            }
+          ]
+        },
+        "2": {
+          "label": "Play/Pause",
+          "icon": "⏯️",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "play_pause"
+            }
+          ],
+          "active": {
+            "color": "#1DB954",
+            "icon": "⏸️",
+            "label": "Pause"
+          }
+        },
+        "3": {
+          "label": "Weiter",
+          "icon": "⏭️",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "next"
+            }
+          ]
+        },
+        "4": {
+          "label": "Leiser",
+          "icon": "🔉",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "master",
+              "op": "down",
+              "step": 5
+            }
+          ]
+        },
+        "5": {
+          "label": "Ton",
+          "icon": "🔊",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "master",
+              "op": "toggle_mute",
+              "step": 5
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Ton aus"
+          }
+        },
+        "6": {
+          "label": "Lauter",
+          "icon": "🔊",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "master",
+              "op": "up",
+              "step": 5
+            }
+          ]
+        },
+        "7": {
+          "label": "",
+          "icon": "🕒",
+          "color": "#1b1e25",
+          "actions": [],
+          "widget": "clock"
+        },
+        "8": {
+          "label": "Mikro",
+          "icon": "🎙️",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "discord",
+              "op": "mute"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Stumm"
+          }
+        },
+        "9": {
+          "label": "Taub",
+          "icon": "🎧",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "discord",
+              "op": "deafen"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🙉",
+            "label": "Taub"
+          }
+        },
+        "10": {
+          "label": "PC-Mikro",
+          "icon": "🎤",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "mic",
+              "op": "toggle_mute",
+              "step": 5
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🚫",
+            "label": "Mikro aus"
+          }
+        },
+        "12": {
+          "label": "Aufnahme",
+          "icon": "⏺️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "record_toggle"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔴",
+            "label": "REC"
+          }
+        },
+        "13": {
+          "label": "Stream",
+          "icon": "📡",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "stream_toggle"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔴",
+            "label": "LIVE"
+          }
+        },
+        "15": {
+          "label": "",
+          "icon": "🧠",
+          "color": "#1b1e25",
+          "actions": [],
+          "widget": "cpu"
+        },
+        "16": {
+          "label": "Discord",
+          "icon": "💬",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "open",
+              "target": "discord://"
+            }
+          ]
+        },
+        "17": {
+          "label": "Spotify",
+          "icon": "🎧",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "open",
+              "target": "spotify:"
+            }
+          ]
+        },
+        "18": {
+          "label": "OBS",
+          "icon": "🎬",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "open",
+              "target": "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe"
+            }
+          ]
+        },
+        "19": {
+          "label": "Browser",
+          "icon": "🌐",
+          "color": "#2f6fde",
+          "actions": [
+            {
+              "type": "open",
+              "target": "https://www.google.de"
+            }
+          ]
+        },
+        "20": {
+          "label": "Explorer",
+          "icon": "📁",
+          "color": "#2f6fde",
+          "actions": [
+            {
+              "type": "open",
+              "target": "explorer.exe"
+            }
+          ]
+        },
+        "21": {
+          "label": "Task-Manager",
+          "icon": "📊",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "ctrl+shift+esc",
+              "mode": "press"
+            }
+          ]
+        },
+        "22": {
+          "label": "Screenshot",
+          "icon": "✂️",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "win+shift+s",
+              "mode": "press"
+            }
+          ]
+        },
+        "23": {
+          "label": "",
+          "icon": "💾",
+          "color": "#1b1e25",
+          "actions": [],
+          "widget": "ram"
+        },
+        "24": {
+          "label": "OBS",
+          "icon": "🎬",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "page",
+              "page": "obs"
+            }
+          ]
+        },
+        "25": {
+          "label": "Discord",
+          "icon": "💬",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "page",
+              "page": "discord"
+            }
+          ]
+        },
+        "26": {
+          "label": "Spotify",
+          "icon": "🎵",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "page",
+              "page": "spotify"
+            }
+          ]
+        },
+        "27": {
+          "label": "System",
+          "icon": "🖥️",
+          "color": "#2f6fde",
+          "actions": [
+            {
+              "type": "page",
+              "page": "system"
+            }
+          ]
+        },
+        "29": {
+          "label": "Desktop",
+          "icon": "🪟",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "win+d",
+              "mode": "press"
+            }
+          ]
+        },
+        "31": {
+          "label": "Sperren",
+          "icon": "🔒",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "system",
+              "op": "lock"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "obs",
+      "name": "OBS",
+      "buttons": {
+        "0": {
+          "label": "Zurück",
+          "icon": "⬅️",
+          "color": "#1b1e25",
+          "actions": [
+            {
+              "type": "back"
+            }
+          ]
+        },
+        "1": {
+          "label": "Aufnahme",
+          "icon": "⏺️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "record_toggle"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔴",
+            "label": "REC"
+          }
+        },
+        "2": {
+          "label": "Stream",
+          "icon": "📡",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "stream_toggle"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔴",
+            "label": "LIVE"
+          }
+        },
+        "3": {
+          "label": "Pause",
+          "icon": "⏸️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "record_pause"
+            }
+          ],
+          "active": {
+            "color": "#c9572b",
+            "icon": "▶️",
+            "label": "Pausiert"
+          }
+        },
+        "4": {
+          "label": "Virtuelle Kamera",
+          "icon": "📷",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "virtualcam_toggle"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "label": "Kamera an"
+          }
+        },
+        "5": {
+          "label": "Replay speichern",
+          "icon": "💾",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "replay_save"
+            }
+          ]
+        },
+        "6": {
+          "label": "Replay-Puffer",
+          "icon": "⏺️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "replay_toggle"
+            }
+          ],
+          "active": {
+            "color": "#c9572b",
+            "label": "Puffer an"
+          }
+        },
+        "7": {
+          "label": "Studio-Modus",
+          "icon": "🎛️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "studio_toggle"
+            }
+          ],
+          "active": {
+            "color": "#7c5cff"
+          }
+        },
+        "8": {
+          "label": "Szene",
+          "icon": "🖼️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "scene",
+              "scene": "Szene"
+            }
+          ],
+          "active": {
+            "color": "#2e9e6a"
+          }
+        },
+        "9": {
+          "label": "Szene 2",
+          "icon": "🖼️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "scene",
+              "scene": "Szene 2"
+            }
+          ],
+          "active": {
+            "color": "#2e9e6a"
+          }
+        },
+        "15": {
+          "label": "Übergang",
+          "icon": "✨",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "transition"
+            }
+          ]
+        },
+        "16": {
+          "label": "Mikrofon",
+          "icon": "🎙️",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "mute_toggle",
+              "input": "Mikrofon/AUX"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Mikro stumm"
+          }
+        },
+        "17": {
+          "label": "Desktop-Audio",
+          "icon": "🔊",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "mute_toggle",
+              "input": "Desktop-Audio"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Desktop stumm"
+          }
+        },
+        "23": {
+          "label": "Screenshot",
+          "icon": "📸",
+          "color": "#3a3f4b",
+          "actions": [
+            {
+              "type": "obs",
+              "op": "screenshot"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "buttons": {
+        "0": {
+          "label": "Zurück",
+          "icon": "⬅️",
+          "color": "#1b1e25",
+          "actions": [
+            {
+              "type": "back"
+            }
+          ]
+        },
+        "1": {
+          "label": "Mikro",
+          "icon": "🎙️",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "discord",
+              "op": "mute"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Stumm"
+          }
+        },
+        "2": {
+          "label": "Taub",
+          "icon": "🎧",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "discord",
+              "op": "deafen"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🙉",
+            "label": "Taub"
+          }
+        },
+        "3": {
+          "label": "Push-to-Talk",
+          "icon": "🗣️",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "discord",
+              "op": "ptt"
+            }
+          ]
+        },
+        "7": {
+          "label": "Discord öffnen",
+          "icon": "💬",
+          "color": "#5865F2",
+          "actions": [
+            {
+              "type": "open",
+              "target": "discord://"
+            }
+          ]
+        },
+        "8": {
+          "label": "Discord leiser",
+          "icon": "🔉",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "app",
+              "op": "down",
+              "step": 5,
+              "app": "Discord.exe"
+            }
+          ]
+        },
+        "9": {
+          "label": "Discord stumm",
+          "icon": "🔈",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "app",
+              "op": "toggle_mute",
+              "step": 5,
+              "app": "Discord.exe"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Discord aus"
+          }
+        },
+        "10": {
+          "label": "Discord lauter",
+          "icon": "🔊",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "app",
+              "op": "up",
+              "step": 5,
+              "app": "Discord.exe"
+            }
+          ]
+        },
+        "16": {
+          "label": "PC-Mikro",
+          "icon": "🎤",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "mic",
+              "op": "toggle_mute",
+              "step": 5
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🚫",
+            "label": "Mikro aus"
+          }
+        }
+      }
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "buttons": {
+        "0": {
+          "label": "Zurück",
+          "icon": "⬅️",
+          "color": "#1b1e25",
+          "actions": [
+            {
+              "type": "back"
+            }
+          ]
+        },
+        "1": {
+          "label": "",
+          "icon": "🎵",
+          "color": "#1b1e25",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "play_pause"
+            }
+          ],
+          "widget": "nowplaying"
+        },
+        "2": {
+          "label": "Zurück",
+          "icon": "⏮️",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "previous"
+            }
+          ]
+        },
+        "3": {
+          "label": "Play/Pause",
+          "icon": "⏯️",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "play_pause"
+            }
+          ],
+          "active": {
+            "color": "#1DB954",
+            "icon": "⏸️",
+            "label": "Pause"
+          }
+        },
+        "4": {
+          "label": "Weiter",
+          "icon": "⏭️",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "next"
+            }
+          ]
+        },
+        "5": {
+          "label": "Zufall",
+          "icon": "🔀",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "shuffle"
+            }
+          ],
+          "active": {
+            "color": "#14833b",
+            "label": "Zufall an"
+          }
+        },
+        "6": {
+          "label": "Wiederholen",
+          "icon": "🔁",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "repeat"
+            }
+          ]
+        },
+        "7": {
+          "label": "Spotify öffnen",
+          "icon": "🎧",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "open",
+              "target": "spotify:"
+            }
+          ]
+        },
+        "8": {
+          "label": "Spotify leiser",
+          "icon": "🔉",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "app",
+              "op": "down",
+              "step": 5,
+              "app": "Spotify.exe"
+            }
+          ]
+        },
+        "9": {
+          "label": "Spotify stumm",
+          "icon": "🔈",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "app",
+              "op": "toggle_mute",
+              "step": 5,
+              "app": "Spotify.exe"
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Spotify aus"
+          }
+        },
+        "10": {
+          "label": "Spotify lauter",
+          "icon": "🔊",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "app",
+              "op": "up",
+              "step": 5,
+              "app": "Spotify.exe"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "system",
+      "name": "System",
+      "buttons": {
+        "0": {
+          "label": "Zurück",
+          "icon": "⬅️",
+          "color": "#1b1e25",
+          "actions": [
+            {
+              "type": "back"
+            }
+          ]
+        },
+        "1": {
+          "label": "Sperren",
+          "icon": "🔒",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "system",
+              "op": "lock"
+            }
+          ]
+        },
+        "2": {
+          "label": "Energiesparen",
+          "icon": "😴",
+          "color": "#c9572b",
+          "actions": [
+            {
+              "type": "system",
+              "op": "sleep"
+            }
+          ],
+          "confirm": true
+        },
+        "3": {
+          "label": "Neustart",
+          "icon": "🔄",
+          "color": "#c9572b",
+          "actions": [
+            {
+              "type": "system",
+              "op": "restart"
+            }
+          ],
+          "confirm": true
+        },
+        "4": {
+          "label": "Herunterfahren",
+          "icon": "⏻",
+          "color": "#d63c3c",
+          "actions": [
+            {
+              "type": "system",
+              "op": "shutdown"
+            }
+          ],
+          "confirm": true
+        },
+        "5": {
+          "label": "Monitor aus",
+          "icon": "🌙",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "system",
+              "op": "monitor_off"
+            }
+          ]
+        },
+        "8": {
+          "label": "Task-Manager",
+          "icon": "📊",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "ctrl+shift+esc",
+              "mode": "press"
+            }
+          ]
+        },
+        "9": {
+          "label": "Screenshot",
+          "icon": "✂️",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "win+shift+s",
+              "mode": "press"
+            }
+          ]
+        },
+        "10": {
+          "label": "Desktop",
+          "icon": "🪟",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "win+d",
+              "mode": "press"
+            }
+          ]
+        },
+        "11": {
+          "label": "Fenster wechseln",
+          "icon": "🔀",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "alt+tab",
+              "mode": "press"
+            }
+          ]
+        },
+        "12": {
+          "label": "Kopieren",
+          "icon": "📋",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "ctrl+c",
+              "mode": "press"
+            }
+          ]
+        },
+        "13": {
+          "label": "Einfügen",
+          "icon": "📥",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "ctrl+v",
+              "mode": "press"
+            }
+          ]
+        },
+        "14": {
+          "label": "Rückgängig",
+          "icon": "↩️",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "ctrl+z",
+              "mode": "press"
+            }
+          ]
+        },
+        "15": {
+          "label": "Explorer",
+          "icon": "📁",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "hotkey",
+              "keys": "win+e",
+              "mode": "press"
+            }
+          ]
+        },
+        "16": {
+          "label": "Leiser",
+          "icon": "🔉",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "master",
+              "op": "down",
+              "step": 5
+            }
+          ]
+        },
+        "17": {
+          "label": "Ton",
+          "icon": "🔊",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "master",
+              "op": "toggle_mute",
+              "step": 5
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🔇",
+            "label": "Ton aus"
+          }
+        },
+        "18": {
+          "label": "Lauter",
+          "icon": "🔊",
+          "color": "#7c5cff",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "master",
+              "op": "up",
+              "step": 5
+            }
+          ]
+        },
+        "19": {
+          "label": "PC-Mikro",
+          "icon": "🎤",
+          "color": "#2a2e37",
+          "actions": [
+            {
+              "type": "volume",
+              "target": "mic",
+              "op": "toggle_mute",
+              "step": 5
+            }
+          ],
+          "active": {
+            "color": "#d63c3c",
+            "icon": "🚫",
+            "label": "Mikro aus"
+          }
+        },
+        "20": {
+          "label": "",
+          "icon": "🔊",
+          "color": "#1b1e25",
+          "actions": [],
+          "widget": "volume"
+        },
+        "22": {
+          "label": "",
+          "icon": "🧠",
+          "color": "#1b1e25",
+          "actions": [],
+          "widget": "cpu"
+        },
+        "23": {
+          "label": "",
+          "icon": "💾",
+          "color": "#1b1e25",
+          "actions": [],
+          "widget": "ram"
+        }
+      }
+    }
+  ]
+}

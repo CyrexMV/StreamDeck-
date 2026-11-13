@@ -1,0 +1,13 @@
+# Optional unter Windows – TabDeck läuft auch ohne, dann fehlen nur diese Funktionen:
+
+# Lautstärke pro Programm (Spotify, Discord …) und Mikrofon stummschalten
+pycaw>=20240316
+comtypes>=1.4
+
+# Spotify gezielt steuern und „Läuft gerade“ (Titel + Cover)
+winrt-runtime>=2.0
+winrt-Windows.Foundation>=2.0
+winrt-Windows.Foundation.Collections>=2.0
+winrt-Windows.Media>=2.0
+winrt-Windows.Media.Control>=2.0
+winrt-Windows.Storage.Streams>=2.0
