@@ -164,6 +164,10 @@ Updates und neuen Programmordnern erhalten:
 daneben, dann `start.bat` starten. Beim ersten Start übernimmt TabDeck deine bisherige Belegung automatisch (auch aus
 einem älteren TabDeck-Ordner im selben Verzeichnis, z. B. *Downloads*). Der Pfad wird im TabDeck-Fenster angezeigt.
 
+**Alte Belegung von Hand übernehmen:** TabDeck schließen, den Ordner **`data`** der alten Version in den neuen
+Programmordner ziehen (neben `start.bat`) und `start.bat` starten. TabDeck übernimmt ihn, sichert die bisherige
+Belegung als „config vorher …json“ und benennt den Ordner danach in „data (übernommen …)“ um.
+
 **Startoptionen**: `python -m server --port 9000`, `--host 127.0.0.1`, `--debug`, `--open`
 
 **Echter App-Modus (optional)**: Android-Browser erlauben Funktionen wie „Bildschirm anlassen“ und echte App-Installation

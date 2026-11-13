@@ -14,6 +14,7 @@ import os
 import secrets
 import shutil
 import sys
+import time
 from pathlib import Path
 
 log = logging.getLogger("tabdeck.config")
@@ -101,19 +102,47 @@ def find_previous_data() -> Path | None:
     return max(found)[1] if found else None
 
 
-def import_previous_data() -> None:
-    """Beim ersten Start mit neuem Speicherort die bisherige Belegung (inkl. Bilder & Verbindungscode) übernehmen."""
-    if DATA_ENV or (DATA_DIR / "config.json").exists():
-        return
-    src = find_previous_data()
-    if not src:
-        return
+def _copy_data(src: Path) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src / "config.json", DATA_DIR / "config.json")
     for sub in ("icons", "appicons"):
         if (src / sub).is_dir():
             shutil.copytree(src / sub, DATA_DIR / sub, dirs_exist_ok=True)
-    log.info("Bisherige Belegung übernommen aus %s", src)
+
+
+def import_previous_data() -> None:
+    """Bisherige Belegung (inkl. Bilder & Verbindungscode) übernehmen.
+
+    1. Liegt im Programmordner ein Ordner „data“ mit einer Belegung (z. B. aus der alten
+       Version hineingezogen), wird er IMMER übernommen. Die aktuelle Belegung wird vorher
+       gesichert, der Ordner danach in „data (übernommen …)“ umbenannt.
+    2. Sonst beim allerersten Start: neueste Belegung aus einem benachbarten TabDeck-Ordner.
+    """
+    if DATA_ENV:
+        return
+    local = ROOT / "data"
+    try:
+        same = local.resolve() == DATA_DIR.resolve()
+    except OSError:
+        same = False
+    if not same and (local / "config.json").is_file() and _is_tabdeck_config(local / "config.json"):
+        stamp = time.strftime("%Y-%m-%d %H-%M-%S")
+        current = DATA_DIR / "config.json"
+        if current.exists():
+            shutil.copy2(current, DATA_DIR / f"config vorher {stamp}.json")
+        _copy_data(local)
+        try:
+            local.rename(ROOT / f"data (übernommen {stamp})")
+        except OSError:
+            (local / "config.json").rename(local / f"config (übernommen {stamp}).json")
+        log.info("Belegung aus %s übernommen (vorherige Belegung gesichert)", local)
+        return
+    if (DATA_DIR / "config.json").exists():
+        return
+    src = find_previous_data()
+    if src:
+        _copy_data(src)
+        log.info("Bisherige Belegung übernommen aus %s", src)
 
 
 class ConfigStore:
@@ -282,10 +311,11 @@ class ConfigStore:
         merged = copy.deepcopy(new)
         merged["server"] = self.data["server"]
         merged["secrets"] = self.data.get("secrets", {})
-        merged["version"] = CONFIG_VERSION
+        merged["version"] = int(new.get("version") or 1)  # ältere Sicherung → Ergänzungen nachtragen
         merged.setdefault("settings", {})
         _merge_defaults(merged["settings"], DEFAULT_SETTINGS)
         merged.setdefault("obs", {})
         _merge_defaults(merged["obs"], DEFAULT_OBS)
         self.data = merged
+        self._migrate()
         self.save()
