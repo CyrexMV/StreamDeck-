@@ -150,12 +150,19 @@ Seiten, Rastergröße, Abstände und mehr findest du unter **⚙️ Einstellunge
 ## ⚙️ Für Fortgeschrittene
 
 **Autostart ohne Fenster**: Führe `start.bat` einmal aus. Danach `Win+R` → `shell:startup` öffnen und dort eine
-Verknüpfung zu **`start-hidden.vbs`** ablegen. Das Protokoll steht dann in `data\tabdeck.log`.
+Verknüpfung zu **`start-hidden.vbs`** ablegen. Das Protokoll steht dann in `%APPDATA%\TabDeck\tabdeck.log`.
 
 **Dateien**
-- `data/config.json`: deine komplette Belegung, inklusive Port, Verbindungscode und Spotify-Anmeldung (nicht weitergeben!)
-- `data/icons/`: hochgeladene Bilder
-- Neuer Verbindungscode: in `data/config.json` den Wert `"token"` leeren und TabDeck neu starten.
+Alles liegt unter Windows in **`%APPDATA%\TabDeck`** (im Explorer in die Adresszeile eintippen). Dort bleibt es auch bei
+Updates und neuen Programmordnern erhalten:
+- `config.json`: deine komplette Belegung (Seiten, Layouts, Tasten, Einstellungen, Port, Verbindungscode,
+  Spotify-Anmeldung). Nicht weitergeben!
+- `icons\`: hochgeladene Bilder, `appicons\`: ausgelesene Programm-Logos
+- Neuer Verbindungscode: in `config.json` den Wert `"token"` leeren und TabDeck neu starten.
+
+**Update auf eine neue Version:** Neue Version herunterladen und entpacken, egal ob in den alten Ordner oder einen neuen
+daneben, dann `start.bat` starten. Beim ersten Start übernimmt TabDeck deine bisherige Belegung automatisch (auch aus
+einem älteren TabDeck-Ordner im selben Verzeichnis, z. B. *Downloads*). Der Pfad wird im TabDeck-Fenster angezeigt.
 
 **Startoptionen**: `python -m server --port 9000`, `--host 127.0.0.1`, `--debug`, `--open`
 

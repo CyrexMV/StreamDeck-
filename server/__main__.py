@@ -62,6 +62,7 @@ def main() -> None:
     print()
     print(f"  Verbindungscode:  {format_token(store.token)}")
     print(f"  QR-Code am PC:    http://localhost:{port}/connect")
+    print(f"  Deine Belegung:   {store.path}")
     print()
     print_qr(urls[0])
     print("  Funktionen:")

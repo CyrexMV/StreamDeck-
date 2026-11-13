@@ -354,3 +354,15 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .strip .fader { padding: 14px 10px; }
 .strip-tag { position: absolute; top: 8px; right: 10px; font-size: 11px; font-weight: 700; opacity: .55; letter-spacing: .05em; }
 .mixer-note { align-self: center; color: var(--muted); font-size: 14px; padding: 0 16px; max-width: 320px; }
+
+/* -------------------------------------------------------- Programm-Logos */
+.img.appicon { width: 50%; height: 50%; filter: drop-shadow(0 3px 6px rgba(0,0,0,.35)); }
+.badge {
+  position: absolute; top: 7%; left: 7%; width: 24%; height: 24%; object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.5)); pointer-events: none;
+}
+.f-logo { width: calc(var(--cell) * .22); height: calc(var(--cell) * .22); object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.fader.compact .f-logo { width: calc(var(--cell) * .17); height: calc(var(--cell) * .17); }
+.strip .f-logo { width: 36px; height: 36px; }
+.app-found { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #4cc38a; }
+.app-found img { width: 28px; height: 28px; object-fit: contain; }

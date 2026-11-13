@@ -1,4 +1,9 @@
-"""Laden und Speichern der Konfiguration (data/config.json)."""
+"""Laden und Speichern der Konfiguration.
+
+Speicherort: unter Windows %APPDATA%\\TabDeck (übersteht Updates und neue Programmordner),
+sonst <Programmordner>/data. Beim ersten Start wird eine ältere Belegung aus dem
+Programmordner oder einem benachbarten TabDeck-Ordner automatisch übernommen.
+"""
 
 from __future__ import annotations
 
@@ -7,12 +12,25 @@ import json
 import logging
 import os
 import secrets
+import shutil
+import sys
 from pathlib import Path
 
 log = logging.getLogger("tabdeck.config")
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get("TABDECK_DATA_DIR", ROOT / "data"))
+DATA_ENV = os.environ.get("TABDECK_DATA_DIR")
+
+
+def _data_dir() -> Path:
+    if DATA_ENV:
+        return Path(DATA_ENV)
+    if sys.platform == "win32" and os.environ.get("APPDATA"):
+        return Path(os.environ["APPDATA"]) / "TabDeck"
+    return ROOT / "data"
+
+
+DATA_DIR = _data_dir()
 CONFIG_PATH = DATA_DIR / "config.json"
 ICON_DIR = DATA_DIR / "icons"
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "default_config.json"
@@ -32,7 +50,7 @@ DEFAULT_SETTINGS = {
     "radius": 18,
     "discord": {"mute": "f14", "deafen": "f15", "ptt": "f13"},
 }
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 DEFAULT_OBS = {"enabled": True, "host": "127.0.0.1", "port": 4455, "password": ""}
 
 
@@ -56,6 +74,48 @@ def _merge_defaults(target: dict, defaults: dict) -> None:
             _merge_defaults(target[key], value)
 
 
+def _is_tabdeck_config(path: Path) -> bool:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return isinstance(data, dict) and isinstance(data.get("pages"), list) and "settings" in data
+    except (OSError, ValueError):
+        return False
+
+
+def find_previous_data() -> Path | None:
+    """Ältere Belegung suchen: im eigenen Programmordner und in benachbarten (älteren) TabDeck-Ordnern."""
+    candidates = [ROOT / "data"]
+    try:
+        candidates += [p.parent for p in ROOT.parent.glob("*/data/config.json")]
+        candidates += [p.parent for p in ROOT.parent.glob("*/*/data/config.json")]
+    except OSError:
+        pass
+    found = []
+    for folder in dict.fromkeys(candidates):
+        cfg = folder / "config.json"
+        try:
+            if folder.resolve() != DATA_DIR.resolve() and cfg.is_file() and _is_tabdeck_config(cfg):
+                found.append((cfg.stat().st_mtime, folder))
+        except OSError:
+            continue
+    return max(found)[1] if found else None
+
+
+def import_previous_data() -> None:
+    """Beim ersten Start mit neuem Speicherort die bisherige Belegung (inkl. Bilder & Verbindungscode) übernehmen."""
+    if DATA_ENV or (DATA_DIR / "config.json").exists():
+        return
+    src = find_previous_data()
+    if not src:
+        return
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src / "config.json", DATA_DIR / "config.json")
+    for sub in ("icons", "appicons"):
+        if (src / sub).is_dir():
+            shutil.copytree(src / sub, DATA_DIR / sub, dirs_exist_ok=True)
+    log.info("Bisherige Belegung übernommen aus %s", src)
+
+
 class ConfigStore:
     def __init__(self, path: Path = CONFIG_PATH):
         self.path = path
@@ -64,6 +124,11 @@ class ConfigStore:
 
     # ------------------------------------------------------------------ laden
     def load(self) -> None:
+        if self.path == CONFIG_PATH:
+            try:
+                import_previous_data()
+            except OSError as exc:
+                log.error("Bisherige Belegung konnte nicht übernommen werden: %s", exc)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         ICON_DIR.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
@@ -129,7 +194,34 @@ class ConfigStore:
                 pid = "mixer" if not any(p.get("id") == "mixer" for p in pages) else "mixer-auto"
                 pages.insert(min(1, len(pages)), {"id": pid, "name": "Mixer", "type": "mixer", "buttons": {}})
                 log.info("Neue Seite „Mixer“ mit Schiebefadern hinzugefügt")
+        if version < 4:
+            # Echte Programm-Logos ergänzen – alles andere an der Belegung bleibt unverändert
+            self._add_app_logos()
         self.data["version"] = CONFIG_VERSION
+
+    def _add_app_logos(self) -> None:
+        """Echte Programm-Logos: Öffnen-/Ordner-Tasten als großes Symbol, App-Tasten der Startseite als Abzeichen."""
+        folder_apps = {"obs": "obs64", "discord": "discord", "spotify": "spotify"}
+        badge_types = {"discord", "obs", "spotify"}
+        changed = 0
+        for page in self.data.get("pages", []):
+            for btn in (page.get("buttons") or {}).values():
+                if btn.get("image") or btn.get("widget") or "app_icon" in btn:
+                    continue
+                first = (btn.get("actions") or [{}])[0]
+                kind = first.get("type")
+                if kind == "open" and first.get("target") and not str(first["target"]).lower().startswith(("ms-settings", "shell:")):
+                    btn["app_icon"] = "main"
+                elif kind == "page" and first.get("page") in folder_apps:
+                    btn["app"] = folder_apps[first["page"]]
+                    btn["app_icon"] = "main"
+                elif kind in badge_types and page.get("id") == "main":
+                    btn["app_icon"] = "badge"
+                else:
+                    continue
+                changed += 1
+        if changed:
+            log.info("%d Tasten zeigen jetzt das Programm-Logo", changed)
 
     def save(self) -> None:
         tmp = self.path.with_suffix(".tmp")

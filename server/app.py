@@ -20,7 +20,8 @@ from aiohttp import WSMsgType, web
 
 from . import __version__
 from .actions import ActionRunner
-from .config import ICON_DIR, ROOT, ConfigStore, format_token, normalize_token
+from .config import DATA_DIR, ICON_DIR, ROOT, ConfigStore, format_token, normalize_token
+from .integrations.appicons import AppIcons, safe_key
 from .errors import ActionError
 from .integrations.audio import AudioController
 from .integrations.keyboard import Keyboard
@@ -66,6 +67,8 @@ class DeckServer:
         self.system = SystemController()
         self.obs = OBSClient(self._on_obs_change)
         self.spotify = SpotifyAPI(store.secrets["spotify"], store.save, self._on_spotify_change)
+        self.appicons = AppIcons(DATA_DIR / "appicons")
+        self._wanted_icons: dict[str, str | None] = {}
         self.runner = ActionRunner(self)
         self.state: dict = {
             "obs": self.obs.state,
@@ -75,6 +78,7 @@ class DeckServer:
             "spotify": self.spotify.state,
             "discord": {"mute": False, "deafen": False},
             "toggles": {},
+            "appicons": self.appicons.cached(),
         }
         self._press_tasks: dict[str, asyncio.Task] = {}
         self._auth_failures: dict[str, list[float]] = {}
@@ -93,6 +97,8 @@ class DeckServer:
         app.router.add_get("/sw.js", self.handle_file("sw.js", "text/javascript"))
         app.router.add_static("/web/", WEB_DIR)
         app.router.add_static("/icons/", ICON_DIR)
+        (DATA_DIR / "appicons").mkdir(parents=True, exist_ok=True)
+        app.router.add_static("/appicons/", DATA_DIR / "appicons")
         app.on_startup.append(self._startup)
         app.on_shutdown.append(self._shutdown)
         app.middlewares.append(self._no_cache)
@@ -108,7 +114,8 @@ class DeckServer:
     async def _startup(self, app: web.Application) -> None:
         self.obs.configure(self.store.obs)
         loops = [("stats", self._poll_stats, 1.0), ("media", self._poll_media, 1.5),
-                 ("audio", self.refresh_audio, 2.0), ("spotify", self.spotify.poll, 3.0)]
+                 ("audio", self.refresh_audio, 2.0), ("spotify", self.spotify.poll, 3.0),
+                 ("icons", self._retry_icons, 30.0)]
         for name, fn, interval in loops:
             self._bg_tasks.append(asyncio.create_task(self._loop(name, fn, interval), name=name))
 
@@ -241,6 +248,7 @@ class DeckServer:
             "audio": {"ok": self.audio.available, "error": self.audio.error},
             "media": {"ok": self.media.available, "error": self.media.error},
             "stats": {"ok": bool(self.system.stats()), "error": self.system.stats_error or "CPU/RAM nicht lesbar"},
+            "appicons": {"ok": self.appicons.available, "error": "nur unter Windows"},
         }
 
     async def _dispatch(self, ws: web.WebSocketResponse, conn_id: str, data: dict) -> None:
@@ -339,6 +347,20 @@ class DeckServer:
         if method == "obs_reconnect":
             self.obs.restart()
             return True
+        if method == "app_icons":
+            refs = {safe_key(r.get("key", "")): r.get("target") for r in (p.get("refs") or []) if r.get("key")}
+            self._wanted_icons.update({k: v for k, v in refs.items() if k})
+            await self._resolve_icons(refs)
+            return self.state["appicons"]
+        if method == "app_icon_refresh":
+            key = safe_key(p.get("key", ""))
+            self.appicons.forget(key)
+            self.state["appicons"].pop(key, None)
+            await self._resolve_icons({key: p.get("target")}, force=True)
+            if key not in self.state["appicons"]:
+                await self.broadcast_state("appicons")
+                raise ActionError("Kein Programm-Symbol gefunden – ist das Programm installiert? Tipp: Programm einmal starten.")
+            return self.state["appicons"][key]
         if method == "set_volume":
             await self._set_channel(p, float(p.get("value", 0)))
             return True
@@ -459,10 +481,34 @@ class DeckServer:
         self.state["spotify"] = self.spotify.state
         await self.broadcast_state("spotify")
 
+    # -------------------------------------------------------- Programm-Symbole
+    async def _resolve_icons(self, refs: dict, force: bool = False) -> None:
+        if not self.appicons.available:
+            return
+        found = False
+        for key, target in refs.items():
+            if not key or key in self.state["appicons"]:
+                continue
+            url = await asyncio.to_thread(self.appicons.resolve, key, target, force)
+            if url:
+                self.state["appicons"][key] = url
+                found = True
+        if found:
+            await self.broadcast_state("appicons")
+
+    async def _retry_icons(self) -> None:
+        missing = {k: v for k, v in self._wanted_icons.items() if k not in self.state["appicons"]}
+        if missing:
+            await self._resolve_icons(missing)
+
     async def refresh_audio(self) -> None:
         if not self.audio.available:
             return
         snap = await self.audio.snapshot()
+        # Symbole für alle Programme, die gerade Ton abspielen (für den Mixer)
+        new = {safe_key(k): None for k in (snap.get("apps") or {}) if safe_key(k) not in self.state["appicons"]}
+        if new:
+            asyncio.create_task(self._resolve_icons(new))
         if snap != self.state["audio"]:
             self.state["audio"] = snap
             await self.broadcast_state("audio")

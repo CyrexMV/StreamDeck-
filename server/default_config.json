@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "settings": {
     "columns": 8,
     "rows": 4,
@@ -47,7 +47,8 @@
               "type": "spotify",
               "op": "previous"
             }
-          ]
+          ],
+          "app_icon": "badge"
         },
         "2": {
           "label": "Play/Pause",
@@ -63,7 +64,8 @@
             "color": "#1DB954",
             "icon": "⏸️",
             "label": "Pause"
-          }
+          },
+          "app_icon": "badge"
         },
         "3": {
           "label": "Weiter",
@@ -74,7 +76,8 @@
               "type": "spotify",
               "op": "next"
             }
-          ]
+          ],
+          "app_icon": "badge"
         },
         "4": {
           "label": "Leiser",
@@ -141,7 +144,8 @@
             "color": "#d63c3c",
             "icon": "🔇",
             "label": "Stumm"
-          }
+          },
+          "app_icon": "badge"
         },
         "9": {
           "label": "Taub",
@@ -157,7 +161,8 @@
             "color": "#d63c3c",
             "icon": "🙉",
             "label": "Taub"
-          }
+          },
+          "app_icon": "badge"
         },
         "10": {
           "label": "PC-Mikro",
@@ -191,7 +196,8 @@
             "color": "#d63c3c",
             "icon": "🔴",
             "label": "REC"
-          }
+          },
+          "app_icon": "badge"
         },
         "13": {
           "label": "Stream",
@@ -207,7 +213,8 @@
             "color": "#d63c3c",
             "icon": "🔴",
             "label": "LIVE"
-          }
+          },
+          "app_icon": "badge"
         },
         "15": {
           "label": "",
@@ -225,7 +232,8 @@
               "type": "open",
               "target": "discord://"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "17": {
           "label": "Spotify",
@@ -236,7 +244,8 @@
               "type": "open",
               "target": "spotify:"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "18": {
           "label": "OBS",
@@ -247,7 +256,8 @@
               "type": "open",
               "target": "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "19": {
           "label": "Browser",
@@ -258,7 +268,8 @@
               "type": "open",
               "target": "https://www.google.de"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "20": {
           "label": "Explorer",
@@ -269,7 +280,8 @@
               "type": "open",
               "target": "explorer.exe"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "21": {
           "label": "Task-Manager",
@@ -311,7 +323,9 @@
               "type": "page",
               "page": "obs"
             }
-          ]
+          ],
+          "app": "obs64",
+          "app_icon": "main"
         },
         "25": {
           "label": "Discord",
@@ -322,7 +336,9 @@
               "type": "page",
               "page": "discord"
             }
-          ]
+          ],
+          "app": "discord",
+          "app_icon": "main"
         },
         "26": {
           "label": "Spotify",
@@ -333,7 +349,9 @@
               "type": "page",
               "page": "spotify"
             }
-          ]
+          ],
+          "app": "spotify",
+          "app_icon": "main"
         },
         "27": {
           "label": "System",
@@ -405,7 +423,8 @@
             "color": "#d63c3c",
             "icon": "🔴",
             "label": "REC"
-          }
+          },
+          "app_icon": "badge"
         },
         "2": {
           "label": "Stream",
@@ -421,7 +440,8 @@
             "color": "#d63c3c",
             "icon": "🔴",
             "label": "LIVE"
-          }
+          },
+          "app_icon": "badge"
         },
         "3": {
           "label": "Pause",
@@ -610,7 +630,8 @@
             "color": "#d63c3c",
             "icon": "🔇",
             "label": "Stumm"
-          }
+          },
+          "app_icon": "badge"
         },
         "2": {
           "label": "Taub",
@@ -626,7 +647,8 @@
             "color": "#d63c3c",
             "icon": "🙉",
             "label": "Taub"
-          }
+          },
+          "app_icon": "badge"
         },
         "3": {
           "label": "Push-to-Talk",
@@ -648,7 +670,8 @@
               "type": "open",
               "target": "discord://"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "8": {
           "label": "Discord leiser",
@@ -768,7 +791,8 @@
             "color": "#1DB954",
             "icon": "⏸️",
             "label": "Pause"
-          }
+          },
+          "app_icon": "badge"
         },
         "4": {
           "label": "Weiter",
@@ -816,7 +840,8 @@
               "type": "open",
               "target": "spotify:"
             }
-          ]
+          ],
+          "app_icon": "main"
         },
         "8": {
           "label": "Spotify leiser",

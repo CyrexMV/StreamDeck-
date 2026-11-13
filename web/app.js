@@ -28,6 +28,23 @@ function fill(el, ...kids) {
   return el;
 }
 
+/* Neu zeichnen – aber nicht, während im Bereich getippt wird (sonst verschwindet die Tastatur
+   am Tablet). Dann wird gewartet, bis das Eingabefeld verlassen wird. */
+function rerenderWhenIdle(container, run) {
+  const ae = document.activeElement;
+  if (ae && container.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) {
+    if (!container._rerenderPending) {
+      container._rerenderPending = true;
+      ae.addEventListener("blur", () => setTimeout(() => {
+        container._rerenderPending = false;
+        if (container.isConnected) rerenderWhenIdle(container, run);
+      }, 400), { once: true });
+    }
+    return;
+  }
+  run();
+}
+
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const safeColor = (c, d = "#2a2e37") => (/^#[0-9a-f]{3,8}$/i.test(c || "") ? c : d);
@@ -180,7 +197,7 @@ const TEMPLATES = [
     T("Push-to-Talk", "🗣️", C.discord, [{ type: "discord", op: "ptt" }]),
     T("Discord leiser", "🔉", C.vol, [{ type: "volume", target: "app", app: "Discord.exe", op: "down", step: 5 }]),
     T("Discord lauter", "🔊", C.vol, [{ type: "volume", target: "app", app: "Discord.exe", op: "up", step: 5 }]),
-    T("Discord öffnen", "💬", C.discord, [{ type: "open", target: "discord://" }]),
+    T("Discord öffnen", "💬", C.discord, [{ type: "open", target: "discord://" }], { app_icon: "main" }),
   ] },
   { group: "Spotify", items: [
     T("", "🎵", C.dark, [{ type: "spotify", op: "play_pause" }], { widget: "nowplaying" }),
@@ -192,7 +209,8 @@ const TEMPLATES = [
     T("Spotify lauter", "🔊", C.spotify, [{ type: "spotify", op: "volume_up", step: 10 }]),
     T("Spotify stumm", "🔈", C.spotify, [{ type: "spotify", op: "mute_toggle" }], { active: ACT("🔇", "Spotify aus") }),
     T("Gefällt mir", "🤍", C.spotify, [{ type: "spotify", op: "like" }], { active: ACT("💚", "Gespeichert", "#14833b") }),
-    T("Spotify öffnen", "🎧", C.spotify, [{ type: "open", target: "spotify:" }]),
+    T("Spotify öffnen", "🎧", C.spotify, [{ type: "open", target: "spotify:" }], { app_icon: "main" }),
+    T("Spotify", "🎵", C.dark, [{ type: "page", page: "spotify" }], { app: "spotify", app_icon: "main" }),
   ] },
   { group: "OBS", items: [
     T("Aufnahme", "⏺️", C.obs, [{ type: "obs", op: "record_toggle" }], { active: ACT("🔴", "REC") }),
@@ -202,6 +220,7 @@ const TEMPLATES = [
     T("Quelle", "👁️", C.obs, [{ type: "obs", op: "source_toggle", scene: "", source: "" }], { active: ACT(null, null, C.green) }),
     T("Replay speichern", "💾", C.obs, [{ type: "obs", op: "replay_save" }]),
     T("Virtuelle Kamera", "📷", C.obs, [{ type: "obs", op: "virtualcam_toggle" }], { active: ACT(null, "Kamera an") }),
+    T("OBS öffnen", "🎬", C.obs, [{ type: "open", target: "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe" }], { app_icon: "main" }),
   ] },
   { group: "Ton & Windows", items: [
     T("Lauter", "🔊", C.vol, [{ type: "volume", target: "master", op: "up", step: 5 }]),
@@ -211,8 +230,8 @@ const TEMPLATES = [
     T("Sperren", "🔒", C.grey, [{ type: "system", op: "lock" }]),
     T("Screenshot", "✂️", C.grey, [{ type: "hotkey", keys: "win+shift+s", mode: "press" }]),
     T("Task-Manager", "📊", C.grey, [{ type: "hotkey", keys: "ctrl+shift+esc", mode: "press" }]),
-    T("Programm", "🚀", C.sys, [{ type: "open", target: "" }]),
-    T("Website", "🌐", C.sys, [{ type: "open", target: "https://" }]),
+    T("Programm", "🚀", C.sys, [{ type: "open", target: "" }], { app_icon: "main" }),
+    T("Website", "🌐", C.sys, [{ type: "open", target: "https://" }], { app_icon: "main" }),
     T("Text", "📝", C.grey, [{ type: "text", text: "", enter: false }]),
   ] },
   { group: "Schiebefader", items: [
@@ -322,12 +341,14 @@ function onMessage(msg) {
       try { saved = sessionStorage.getItem("tabdeck.page"); } catch {}
       if (!App.pageId || !getPage(App.pageId)) App.pageId = getPage(saved) ? saved : App.config.pages[0].id;
       renderAll();
+      requestAppIcons();
       break;
     }
     case "config":
       App.config = msg.config;
       if (!getPage(App.pageId)) App.pageId = App.config.pages[0].id;
       renderAll();
+      requestAppIcons();
       break;
     case "state":
       Object.assign(App.state, msg.state || {});
@@ -630,16 +651,19 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
     const sp = (App.spans || {})[slot] || btn.size || { w: 1, h: 1 };
     const vh = App.transposed ? sp.w : sp.h, vw = App.transposed ? sp.h : sp.w;
     const ch = faderChannel(btn);
-    inner = faderHTML(ch, { label: label || channelName(ch), icon: ico || "🔊", vertical: (vh || 1) >= (vw || 1), compact: ((vh || 1) === 1 && (vw || 1) === 1) || ((vw || 1) === 2 && (vh || 1) === 1) });
+    inner = faderHTML(ch, { label: label || channelName(ch), icon: ico || "🔊", logo: btn.app_icon === "off" ? null : appIconUrl(btn), vertical: (vh || 1) >= (vw || 1), compact: ((vh || 1) === 1 && (vw || 1) === 1) || ((vw || 1) === 2 && (vh || 1) === 1) });
     cls += " fader-face";
   } else if (btn.widget) {
     inner = widgetHTML(btn, label);
   } else {
+    const logo = btn.app_icon === "main" || btn.app_icon === "badge" ? appIconUrl(btn) : null;
     const visual = btn.image
       ? `<img class="img" src="${esc(btn.image)}" alt="" draggable="false">`
-      : ico ? `<span class="icon">${esc(ico)}</span>` : "";
+      : logo && btn.app_icon === "main" ? `<img class="img appicon" src="${esc(logo)}" alt="" draggable="false">`
+        : ico ? `<span class="icon">${esc(ico)}</span>` : "";
     if (btn.image && btn.image_fill) cls += " img-fill";
     inner = visual + (showLabels && label ? `<span class="label">${esc(label)}</span>` : "");
+    if (logo && btn.app_icon === "badge") inner += `<img class="badge" src="${esc(logo)}" alt="" draggable="false">`;
     const val = valueText(btn);
     if (val) inner += `<span class="value">${val}</span>`;
   }
@@ -649,6 +673,66 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
     if (pulsing) cls += " pulse";
   }
   return `<div class="${cls}" style="--b:${color};--f:${fg}">${inner}</div>`;
+}
+
+/* ======================================================== Programm-Logos */
+const safeKey = (k) => String(k || "").trim().toLowerCase().replace(/\.exe$/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 60);
+const SCHEME_APPS = { discord: "discord", spotify: "spotify", steam: "steam", obs: "obs64" };
+const APP_KEY_NAMES = { discord: "Discord", spotify: "Spotify", obs64: "OBS Studio", steam: "Steam", chrome: "Chrome", msedge: "Edge",
+  firefox: "Firefox", explorer: "Explorer", browser: "Standardbrowser", taskmgr: "Task-Manager" };
+
+function refForTarget(target) {
+  const t = String(target || "").trim().replace(/^"|"$/g, "");
+  if (!t) return null;
+  const m = /^([a-z][a-z0-9+.-]*):/i.exec(t);
+  if (m && m[1].length > 1) {
+    const scheme = m[1].toLowerCase();
+    if (scheme === "http" || scheme === "https") return { key: "browser" };
+    if (scheme === "ms-settings" || scheme === "shell") return null;
+    return { key: SCHEME_APPS[scheme] || "url-" + scheme, target: t };
+  }
+  const base = t.split(/[\\/]/).pop();
+  return { key: safeKey(base), target: t };
+}
+
+/* Zu welchem Programm gehört eine Taste? */
+function appRefForButton(btn) {
+  if (!btn) return null;
+  if (btn.app) return { key: safeKey(btn.app) };
+  if (btn.widget === "fader") {
+    const f = btn.fader || {};
+    if (f.target === "app" && f.app) return { key: safeKey(f.app) };
+    if (f.target === "spotify") return { key: "spotify" };
+    if (f.target === "obs") return { key: "obs64" };
+    return null;
+  }
+  for (const a of btn.actions || []) {
+    if (a.type === "discord") return { key: "discord" };
+    if (a.type === "spotify") return { key: "spotify" };
+    if (a.type === "obs") return { key: "obs64" };
+    if (a.type === "volume" && a.target === "app" && a.app) return { key: safeKey(a.app) };
+    if (a.type === "open" && a.target) return refForTarget(a.target);
+  }
+  return null;
+}
+
+function appIconUrl(btn) {
+  const ref = appRefForButton(btn);
+  return ref ? (App.state.appicons || {})[ref.key] || null : null;
+}
+
+let iconRequested = new Set();
+function requestAppIcons(extra = []) {
+  if (!App.config) return;
+  const refs = [{ key: "spotify" }, { key: "obs64" }, { key: "discord" }, ...extra];
+  for (const page of App.config.pages) for (const btn of Object.values(page.buttons || {})) {
+    const ref = appRefForButton(btn);
+    if (ref) refs.push(ref);
+  }
+  const todo = refs.filter((r) => r.key && !(App.state.appicons || {})[r.key] && !iconRequested.has(r.key + "|" + (r.target || "")));
+  if (!todo.length) return;
+  todo.forEach((r) => iconRequested.add(r.key + "|" + (r.target || "")));
+  rpc("app_icons", { refs: todo }).catch(() => todo.forEach((r) => iconRequested.delete(r.key + "|" + (r.target || ""))));
 }
 
 /* ================================================================== Fader */
@@ -721,14 +805,14 @@ function faderValueText(ch, v) {
   return ch.kind === "obs" ? fmtDb(v.db ?? pctToDb(v.level)) : `${v.level}%`;
 }
 
-function faderHTML(ch, { label, icon, vertical, compact = false }) {
+function faderHTML(ch, { label, icon, logo = null, vertical, compact = false }) {
   const v = channelView(ch);
   const key = chKey(ch);
   const lvl = v.level ?? 0;
   const muteIco = v.muted ? (ch.kind === "mic" ? "🚫" : "🔇") : (ch.kind === "mic" ? "🎤" : "🔊");
   const cls = `fader ${vertical ? "v" : "h"}${compact ? " compact" : ""}${v.muted ? " muted" : ""}${v.level == null ? " off" : ""}${App.faderDrag === key ? " dragging" : ""}`;
   return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%">` +
-    `<div class="f-head"><span class="f-icon">${esc(icon)}</span><span class="f-label">${esc(label)}</span></div>` +
+    `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">` : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span></div>` +
     `<div class="f-track"><div class="f-fill"></div><div class="f-knob"></div></div>` +
     `<div class="f-foot"><span class="f-val">${esc(faderValueText(ch, v))}</span>` +
     (v.level == null ? "" : `<button class="f-mute" type="button" aria-label="Stumm schalten">${muteIco}</button>`) + `</div></div>`;
@@ -836,7 +920,9 @@ function mixerChannels() {
 
 function stripHTML(ch) {
   const { label, icon, group, ...core } = ch;
-  return faderHTML(core, { label, icon, vertical: true }) + (group === "obs" ? `<span class="strip-tag">OBS</span>` : "");
+  const key = core.kind === "app" ? safeKey(core.app) : core.kind === "spotify" ? "spotify" : core.kind === "obs" ? "obs64" : null;
+  const logo = key ? (App.state.appicons || {})[key] : null;
+  return faderHTML(core, { label, icon, logo, vertical: true }) + (group === "obs" ? `<span class="strip-tag">OBS</span>` : "");
 }
 
 function renderMixer(full) {
@@ -1403,7 +1489,7 @@ function openEditor(slot) {
         h("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
           h("button", { class: "btn", html: icon("grid") + "Vorlage wählen", onclick: () => openTemplates((tpl) => {
             Object.assign(draft, clone(tpl));
-            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size"]) if (!(k in tpl)) delete draft[k];
+            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size", "app", "app_icon"]) if (!(k in tpl)) delete draft[k];
             render();
           }) }),
           h("div", { class: "help", text: (draft.active || draft.toggle) ? "Links normal, rechts im aktiven Zustand." : "Vorschau" }))),
@@ -1465,7 +1551,7 @@ function openEditor(slot) {
     ],
   });
   render();
-  const onState = () => updatePreview();
+  const onState = (e) => { if ((e.detail || []).includes("appicons")) rerenderWhenIdle(body, render); else updatePreview(); };
   document.addEventListener("tabdeck:state", onState);
   const origClose = m.close;
   m.close = (r) => { document.removeEventListener("tabdeck:state", onState); origClose(r); };
@@ -1504,6 +1590,7 @@ function appearanceSection(draft, render, updatePreview) {
       draft.image ? h("div", { class: "row", style: { marginTop: "6px", flexWrap: "wrap" } },
         h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!draft.image_fill, onchange: (e) => { draft.image_fill = e.target.checked; updatePreview(); } }), "Bild füllt die ganze Taste"),
         h("button", { class: "btn small danger", text: "Bild entfernen", onclick: () => { delete draft.image; delete draft.image_fill; render(); } })) : null),
+    appLogoField(draft, render, updatePreview),
     h("div", { class: "field" }, h("label", { text: "Farbe" }), swatches),
     h("div", { class: "row" },
       h("div", { class: "field" }, h("label", { text: "Art der Kachel" }),
@@ -1524,6 +1611,39 @@ function appearanceSection(draft, render, updatePreview) {
     draft.widget === "fader" ? h("div", { class: "action-card", style: { marginTop: "12px" } },
       FADER_FIELDS.filter((f) => !f.show || f.show(draft.fader)).map((f) => fieldEl(draft.fader, f, render, updatePreview))) : null,
   );
+}
+
+function appLogoField(draft, render, updatePreview) {
+  const ref = appRefForButton(draft);
+  const url = ref ? (App.state.appicons || {})[ref.key] : null;
+  if (ref && !url) requestAppIcons([ref]);
+  const isFader = draft.widget === "fader";
+  const options = isFader
+    ? [["", "Anzeigen (automatisch)"], ["off", "Aus – Emoji verwenden"]]
+    : [["", "Aus – Emoji/Bild verwenden"], ["main", "Als großes Symbol"], ["badge", "Als kleines Abzeichen in der Ecke"]];
+  const name = ref ? (APP_KEY_NAMES[ref.key] || prettyApp(ref.key)) : null;
+  const status = !ref
+    ? h("span", { class: "help", text: "Kein Programm erkannt – unten eintragen (z. B. Discord.exe)." })
+    : url
+      ? h("span", { class: "app-found" }, h("img", { src: url, alt: "" }), h("span", { text: `${name} erkannt` }))
+      : h("span", { class: "help", text: `${name}: Symbol wird gesucht … (Programm am PC einmal starten hilft)` });
+  return h("div", { class: "field" }, h("label", { text: "Programm-Logo" }),
+    h("div", { class: "row wrap" },
+      h("select", { style: { flex: "1", minWidth: "220px", width: "auto" }, value: draft.app_icon || "", onchange: (e) => {
+        if (e.target.value) draft.app_icon = e.target.value; else delete draft.app_icon;
+        updatePreview();
+      } }, options.map(([v, l]) => h("option", { value: v, text: l }))),
+      status,
+      ref ? h("button", { class: "btn small", text: "Neu laden", title: "Symbol erneut vom PC lesen", onclick: async () => {
+        try { await rpc("app_icon_refresh", ref); toast("Symbol aktualisiert", "ok"); render(); } catch (err) { toast(err.message, "error"); }
+      } }) : null),
+    h("div", { class: "row", style: { marginTop: "8px" } },
+      h("input", { type: "text", value: draft.app || "", placeholder: ref && !draft.app ? `Automatisch: ${name}` : "Programm, z. B. Discord.exe",
+        list: "dl-apps", spellcheck: "false", autocapitalize: "off",
+        oninput: (e) => { const v = e.target.value.trim(); if (v) draft.app = v; else delete draft.app; },
+        onchange: () => { const r = appRefForButton(draft); if (r) requestAppIcons([r]); render(); } }),
+      h("datalist", { id: "dl-apps" }, [...new Set([...App.audioApps, "Discord.exe", "Spotify.exe", "obs64.exe", "chrome.exe", "msedge.exe", "firefox.exe", "steam.exe"])].map((o) => h("option", { value: o })))),
+    h("div", { class: "help", text: "Das Logo wird direkt aus dem installierten Programm auf deinem PC gelesen. Das Feld darüber nur ausfüllen, wenn TabDeck das Programm nicht selbst erkennt." }));
 }
 
 function actionsSection(draft, render, updatePreview) {
@@ -1620,6 +1740,12 @@ function openSettings() {
         chk(s, "show_labels", "Beschriftungen auf den Tasten anzeigen"),
         chk(s, "rotate_portrait", "Raster im Hochformat drehen (Spalten werden zu Zeilen)"),
         chk(s, "haptics", "Vibration beim Drücken")),
+      h("div", { class: "section" }, h("h3", { text: "Programm-Logos" }),
+        h("p", { class: "help", text: "Setzt auf passende Tasten das echte Logo des Programms: „Öffnen“- und Ordner-Tasten (Discord, Spotify, OBS …) als großes Symbol, Discord-/OBS-/Spotify-Tasten der Startseite als kleines Abzeichen. Tasten mit eigenem Bild oder bereits gewählter Logo-Einstellung bleiben unverändert. Danach „Speichern“." }),
+        h("button", { class: "btn", text: "Programm-Logos hinzufügen", onclick: () => {
+          const n = addAppLogos(draft);
+          toast(n ? `${n} Tasten bekommen ein Logo – jetzt „Speichern“ tippen` : "Keine passenden Tasten gefunden", n ? "ok" : "");
+        } })),
     ],
     pages: () => {
       const rows = draft.pages.map((p, i) => h("div", { class: "page-row" },
@@ -1709,7 +1835,7 @@ function openSettings() {
         h("div", { class: "section" }, h("h3", { text: "TabDeck " + (App.version || "") }),
           h("div", { class: "feature-list" },
             line("Tastatur & Medientasten", f.keyboard), line("Lautstärke pro Programm", f.audio), line("Läuft gerade / Spotify", f.media),
-            line("CPU & RAM", f.stats),
+            line("CPU & RAM", f.stats), line("Programm-Logos", f.appicons),
             line("Spotify-App-Lautstärke", { ok: !!App.state.spotify?.connected, error: App.state.spotify?.error || "nicht verbunden (Einstellungen → Spotify)" }),
             line("OBS", { ok: !!App.state.obs?.connected, error: App.state.obs?.error || (draft.obs.enabled ? "nicht verbunden" : "deaktiviert") }))),
         h("div", { class: "section" }, h("h3", { text: "Tipps fürs Tablet" }),
@@ -1738,7 +1864,7 @@ function openSettings() {
   };
   const onState = (e) => {
     const keys = e.detail || [];
-    if ((tab === "obs" && keys.includes("obs")) || (tab === "info" && (keys.includes("obs") || keys.includes("spotify")))) show();
+    if ((tab === "obs" && keys.includes("obs")) || (tab === "info" && (keys.includes("obs") || keys.includes("spotify")))) rerenderWhenIdle(body, show);
   };
   document.addEventListener("tabdeck:state", onState);
 
@@ -1797,11 +1923,26 @@ function spotifySettings() {
   };
   let info = null;
   rpc("spotify_info").then((r) => { info = r; render(info); }).catch(() => render(null));
-  const onState = (e) => { if ((e.detail || []).includes("spotify")) render(info); };
+  const onState = (e) => { if ((e.detail || []).includes("spotify")) rerenderWhenIdle(box, () => render(info)); };
   document.addEventListener("tabdeck:state", onState);
   box._cleanup = () => document.removeEventListener("tabdeck:state", onState);
   render(null);
   return [box];
+}
+
+function addAppLogos(cfg) {
+  const folderApps = { obs: "obs64", discord: "discord", spotify: "spotify" };
+  let n = 0;
+  for (const page of cfg.pages) for (const btn of Object.values(page.buttons || {})) {
+    if (btn.image || btn.widget || "app_icon" in btn) continue;
+    const a = (btn.actions || [])[0] || {};
+    if (a.type === "open" && a.target && !/^(ms-settings|shell:)/i.test(a.target)) btn.app_icon = "main";
+    else if (a.type === "page" && folderApps[a.page]) { btn.app = folderApps[a.page]; btn.app_icon = "main"; }
+    else if (["discord", "obs", "spotify"].includes(a.type) && page.id === "main") btn.app_icon = "badge";
+    else continue;
+    n++;
+  }
+  return n;
 }
 
 function hotkeyRow(obj, key, label) {
