@@ -384,7 +384,7 @@ function layout() {
 function renderTabs() {
   const nav = $("#tabs");
   nav.replaceChildren(...App.config.pages.filter((p) => !p.hidden || p.id === App.pageId).map((p) =>
-    h("button", { class: "tab" + (p.id === App.pageId ? " active" : ""), text: p.name, onclick: () => gotoPage(p.id, true) })));
+    h("button", { class: "tab" + (p.id === App.pageId ? " active" : ""), text: p.name, "data-page": p.id, onclick: () => gotoPage(p.id, true) })));
 }
 
 function renderGrid() {
@@ -398,6 +398,7 @@ function renderGrid() {
     const el = h("div", { class: "slot" + (btn ? "" : " empty"), "data-slot": String(i) });
     if (btn) { el._html = faceHTML(btn, page.id, i); el.innerHTML = el._html; }
     if (App.moveFrom === i) el.classList.add("move-src");
+    if (App.drag && App.drag.page === page.id && App.drag.slot === i) el.classList.add("drag-src");
     if (App.transposed) {
       el.style.gridRow = String((i % s.columns) + 1);
       el.style.gridColumn = String(Math.floor(i / s.columns) + 1);
@@ -410,7 +411,7 @@ function renderGrid() {
   $("#edithint").hidden = !App.editing;
   $("#edithint span").textContent = App.moveFrom !== null
     ? "Tippe auf das Ziel-Feld, um die Taste dorthin zu verschieben."
-    : "Bearbeitungsmodus – tippe auf eine Taste oder ein leeres Feld.";
+    : "Bearbeiten: Taste antippen zum Ändern – festhalten und ziehen zum Verschieben (auch auf einen Seiten-Reiter).";
   $("#btn-edit").classList.toggle("on", App.editing);
 }
 
@@ -608,6 +609,7 @@ function setupGrid() {
 
   grid.addEventListener("click", (e) => {
     if (!App.editing) return;
+    if (App.suppressClick) { App.suppressClick = false; return; }
     const el = e.target.closest(".slot");
     if (!el) return;
     const slot = Number(el.dataset.slot);
@@ -678,15 +680,134 @@ async function saveConfig(cfg, okMsg) {
 function finishMove(target) {
   const from = App.moveFrom;
   App.moveFrom = null;
-  if (from === target) { renderGrid(); return; }
+  moveButton({ page: App.pageId, slot: from }, { page: App.pageId, slot: target });
+}
+
+/* Verschiebt eine Taste; liegt am Ziel schon eine, tauschen beide den Platz.
+   dst.slot === null → erstes freies Feld der Zielseite. */
+function moveButton(src, dst) {
   const cfg = clone(App.config);
-  const page = cfg.pages.find((p) => p.id === App.pageId);
-  const a = page.buttons[String(from)], b = page.buttons[String(target)];
-  delete page.buttons[String(from)];
-  delete page.buttons[String(target)];
-  if (a) page.buttons[String(target)] = a;
-  if (b) page.buttons[String(from)] = b;
-  saveConfig(cfg);
+  const from = cfg.pages.find((p) => p.id === src.page);
+  const to = cfg.pages.find((p) => p.id === dst.page);
+  if (!from || !to) { renderGrid(); return; }
+  let target = dst.slot;
+  if (target === null || target === undefined) {
+    const total = cfg.settings.columns * cfg.settings.rows;
+    target = -1;
+    for (let i = 0; i < total; i++) if (!to.buttons[String(i)]) { target = i; break; }
+    if (target < 0) { toast(`Auf „${to.name}“ ist kein Feld mehr frei`, "error"); renderGrid(); return; }
+  }
+  if (from === to && Number(src.slot) === Number(target)) { renderGrid(); return; }
+  const a = from.buttons[String(src.slot)], b = to.buttons[String(target)];
+  if (!a) { renderGrid(); return; }
+  delete from.buttons[String(src.slot)];
+  delete to.buttons[String(target)];
+  to.buttons[String(target)] = a;
+  if (b) from.buttons[String(src.slot)] = b;
+  saveConfig(cfg, from !== to ? `Nach „${to.name}“ verschoben` : null);
+}
+
+/* ------------------------------------------------------- Ziehen & Ablegen */
+function setupDrag() {
+  const THRESHOLD = 8;
+  let start = null;   // { x, y, slot, page, pointerId, el }
+  let ghost = null;
+  let hoverEl = null;
+  let tabTimer = null;
+
+  const clearHover = () => {
+    if (hoverEl) hoverEl.classList.remove("drop-target");
+    hoverEl = null;
+    clearTimeout(tabTimer);
+    tabTimer = null;
+  };
+
+  const targetAt = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    return el.closest("#grid .slot") || el.closest("#tabs .tab");
+  };
+
+  const begin = (e) => {
+    const src = start.el.querySelector(".face");
+    const rect = start.el.getBoundingClientRect();
+    ghost = h("div", { class: "drag-ghost", style: { width: rect.width + "px", height: rect.height + "px" } });
+    if (src) ghost.append(src.cloneNode(true));
+    document.body.append(ghost);
+    start.dx = start.x - rect.left;
+    start.dy = start.y - rect.top;
+    App.drag = { page: start.page, slot: start.slot };
+    document.body.classList.add("dragging");
+    start.el.classList.add("drag-src");
+    if (S().haptics !== false && navigator.vibrate) navigator.vibrate(15);
+    move(e);
+  };
+
+  const move = (e) => {
+    ghost.style.transform = `translate(${e.clientX - start.dx}px, ${e.clientY - start.dy}px) scale(1.06)`;
+    const t = targetAt(e.clientX, e.clientY);
+    if (t === hoverEl) return;
+    clearHover();
+    if (!t) return;
+    hoverEl = t;
+    t.classList.add("drop-target");
+    // Kurz über einem Seiten-Reiter halten → Seite wechseln und dort genau platzieren
+    if (t.classList.contains("tab") && t.dataset.page !== App.pageId) {
+      tabTimer = setTimeout(() => {
+        clearHover();
+        setPage(t.dataset.page);
+        renderTabs();
+      }, 650);
+    }
+  };
+
+  const finish = (e, cancelled) => {
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", onUp, true);
+    window.removeEventListener("pointercancel", onCancel, true);
+    const wasDragging = !!ghost;
+    const drag = App.drag;
+    const t = wasDragging && !cancelled ? targetAt(e.clientX, e.clientY) : null;
+    clearHover();
+    if (ghost) ghost.remove();
+    ghost = null;
+    document.body.classList.remove("dragging");
+    App.drag = null;
+    start = null;
+    if (!wasDragging) return;
+    App.suppressClick = true;
+    setTimeout(() => { App.suppressClick = false; }, 400);
+    if (!t) { renderGrid(); return; }
+    if (t.classList.contains("tab")) {
+      if (t.dataset.page === drag.page) { renderGrid(); return; }
+      moveButton(drag, { page: t.dataset.page, slot: null });
+    } else {
+      moveButton(drag, { page: App.pageId, slot: Number(t.dataset.slot) });
+    }
+  };
+
+  const onMove = (e) => {
+    if (!start || e.pointerId !== start.pointerId) return;
+    if (!ghost) {
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < THRESHOLD) return;
+      begin(e);
+      return;
+    }
+    e.preventDefault();
+    move(e);
+  };
+  const onUp = (e) => { if (start && e.pointerId === start.pointerId) finish(e, false); };
+  const onCancel = (e) => { if (start && e.pointerId === start.pointerId) finish(e, true); };
+
+  $("#grid").addEventListener("pointerdown", (e) => {
+    if (!App.editing || App.moveFrom !== null || start || e.button > 0) return;
+    const el = e.target.closest(".slot");
+    if (!el || el.classList.contains("empty")) return;
+    start = { x: e.clientX, y: e.clientY, slot: Number(el.dataset.slot), page: App.pageId, pointerId: e.pointerId, el };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+  });
 }
 
 /* ================================================================== Dialoge */
@@ -1433,6 +1554,7 @@ function init() {
   $("#btn-fullscreen").onclick = toggleFullscreen;
 
   setupGrid();
+  setupDrag();
   window.addEventListener("resize", layout);
   document.addEventListener("fullscreenchange", () => setTimeout(layout, 50));
   document.addEventListener("visibilitychange", () => {

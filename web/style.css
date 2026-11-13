@@ -280,3 +280,17 @@ input[type=color] { width: 44px; height: 44px; border: 1px solid var(--line); bo
 .steps li { margin-bottom: 4px; }
 .copy-row { display: flex; gap: 8px; align-items: center; }
 .copy-row code { flex: 1; padding: 10px 12px !important; font-size: 13px !important; word-break: break-all; -webkit-user-select: all; user-select: all; }
+
+/* ------------------------------------------------------- Ziehen & Ablegen */
+.drag-ghost {
+  position: fixed; left: 0; top: 0; z-index: 200; pointer-events: none; border-radius: var(--radius);
+  filter: drop-shadow(0 18px 30px rgba(0,0,0,.55)); opacity: .95;
+}
+.drag-ghost .face { animation: none !important; }
+.slot.drag-src .face { opacity: .25; animation: none !important; }
+body.dragging .slot .face { animation: none !important; }
+body.dragging .slot.empty { border-color: var(--panel3); }
+.slot.drop-target { outline: 3px solid var(--acc); outline-offset: 4px; }
+.slot.drop-target.empty { border-color: var(--acc); background: rgba(124,92,255,.12); }
+.tab.drop-target { background: var(--acc); color: #fff; }
+body.dragging, body.dragging * { cursor: grabbing !important; }

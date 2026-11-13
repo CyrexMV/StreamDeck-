@@ -124,7 +124,13 @@ Weitere nützliche Ziele für „Öffnen“: `spotify:`, `discord://`, `steam://
    - **Aktionen**: beliebig viele, mit ▶ einzeln testbar
    - **Aktiver Zustand**: anderes Symbol, andere Farbe oder Beschriftung, wenn die Taste „an“ ist
      (z. B. 🎙️ → 🔇 „Stumm“ in Rot)
-3. **Speichern**. Mit 🗑 löschst du die Taste, mit ✥ verschiebst du sie (danach Ziel-Feld antippen), mit ⧉ duplizierst du sie.
+3. **Speichern**. Mit 🗑 löschst du die Taste, mit ⧉ duplizierst du sie.
+
+**Kacheln verschieben:** Im Bearbeitungsmodus eine Kachel **festhalten und ziehen**:
+- auf ein freies Feld: Die Kachel wandert dorthin.
+- auf eine andere Kachel: Beide tauschen den Platz.
+- auf einen **Seiten-Reiter** oben: Loslassen legt sie ins erste freie Feld dieser Seite. Kurz darüber **halten**
+  öffnet die Seite, dann kannst du sie dort genau platzieren.
 
 Seiten, Rastergröße, Abstände und mehr findest du unter **⚙️ Einstellungen**. Dort gibt es unter *Sicherung* auch den
 **Export** und **Import** deiner kompletten Belegung.
