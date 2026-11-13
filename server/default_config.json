@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "settings": {
     "columns": 8,
     "rows": 4,
@@ -9,8 +10,8 @@
     "gap": 12,
     "radius": 18,
     "discord": {
-      "mute": "ctrl+shift+m",
-      "deafen": "ctrl+shift+d",
+      "mute": "f14",
+      "deafen": "f15",
       "ptt": "f13"
     }
   },
@@ -814,28 +815,23 @@
         "8": {
           "label": "Spotify leiser",
           "icon": "🔉",
-          "color": "#7c5cff",
+          "color": "#1DB954",
           "actions": [
             {
-              "type": "volume",
-              "target": "app",
-              "op": "down",
-              "step": 5,
-              "app": "Spotify.exe"
+              "type": "spotify",
+              "op": "volume_down",
+              "step": 10
             }
           ]
         },
         "9": {
           "label": "Spotify stumm",
           "icon": "🔈",
-          "color": "#7c5cff",
+          "color": "#1DB954",
           "actions": [
             {
-              "type": "volume",
-              "target": "app",
-              "op": "toggle_mute",
-              "step": 5,
-              "app": "Spotify.exe"
+              "type": "spotify",
+              "op": "mute_toggle"
             }
           ],
           "active": {
@@ -847,16 +843,30 @@
         "10": {
           "label": "Spotify lauter",
           "icon": "🔊",
-          "color": "#7c5cff",
+          "color": "#1DB954",
           "actions": [
             {
-              "type": "volume",
-              "target": "app",
-              "op": "up",
-              "step": 5,
-              "app": "Spotify.exe"
+              "type": "spotify",
+              "op": "volume_up",
+              "step": 10
             }
           ]
+        },
+        "11": {
+          "label": "Gefällt mir",
+          "icon": "🤍",
+          "color": "#1DB954",
+          "actions": [
+            {
+              "type": "spotify",
+              "op": "like"
+            }
+          ],
+          "active": {
+            "color": "#14833b",
+            "icon": "💚",
+            "label": "Gespeichert"
+          }
         }
       }
     },

@@ -372,9 +372,21 @@ class OBSClient:
         elif op == "source_toggle":
             await self._toggle_source(a.get("scene") or self.state.get("current_scene"), a.get("source"))
         elif op == "screenshot":
-            await self.request("TriggerHotkeyByName", {"hotkeyName": "OBSBasic.Screenshot"})
+            await self._screenshot()
         else:
             raise OBSError(f"Unbekannte OBS-Aktion: {op}")
+
+    async def _screenshot(self) -> None:
+        """Speichert ein Bild der aktuellen Szene im Aufnahme-Ordner von OBS."""
+        import time as _time
+
+        scene = self.state.get("current_scene") or (await self.request("GetCurrentProgramScene")).get("sceneName")
+        folder = (await self.request("GetRecordDirectory")).get("recordDirectory")
+        if not folder:
+            raise OBSError("In OBS ist kein Aufnahme-Ordner eingestellt")
+        sep = "\\" if "\\" in folder else "/"
+        path = f"{folder.rstrip('/').rstrip(sep)}{sep}Screenshot {_time.strftime('%Y-%m-%d %H-%M-%S')}.png"
+        await self.request("SaveSourceScreenshot", {"sourceName": scene, "imageFormat": "png", "imageFilePath": path})
 
     async def _toggle_source(self, scene: str | None, source: str | None) -> None:
         if not scene or not source:

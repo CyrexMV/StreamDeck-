@@ -60,7 +60,7 @@ class ActionRunner:
         elif t == "media":
             await self.s.media.control(a.get("op", "play_pause"), "any")
         elif t == "spotify":
-            await self.s.media.control(a.get("op", "play_pause"), "spotify")
+            await self._spotify(a)
         elif t == "volume":
             await self._volume(a)
         elif t == "obs":
@@ -82,6 +82,23 @@ class ActionRunner:
             pass
         else:
             raise ActionError(f"Unbekannter Aktionstyp: {t}")
+
+    async def _spotify(self, a: dict) -> None:
+        op = a.get("op", "play_pause")
+        sp = self.s.spotify
+        if op in ("volume_up", "volume_down", "volume_set", "mute_toggle"):
+            # Echte Lautstärke in der Spotify-App (nicht Windows-Mixer)
+            await sp.volume(op, a.get("step", 50 if op == "volume_set" else 10))
+            return
+        if op == "like":
+            await sp.toggle_like()
+            return
+        try:
+            await self.s.media.control(op, "spotify")
+        except ActionError:
+            if not sp.state.get("connected"):
+                raise
+            await sp.transport(op)  # Ersatzweg über die Spotify Web API
 
     async def _volume(self, a: dict) -> None:
         target = a.get("target", "master")

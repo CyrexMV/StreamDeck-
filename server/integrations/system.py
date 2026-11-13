@@ -19,13 +19,17 @@ _DETACHED = 0x00000008 | 0x00000200 if IS_WINDOWS else 0  # DETACHED_PROCESS | N
 
 class SystemController:
     def __init__(self) -> None:
+        self.stats_error: str | None = None
+        self._last_times = None
         try:
             import psutil
 
             self._psutil = psutil
             psutil.cpu_percent(interval=None)  # erste Messung initialisieren
-        except Exception:
+        except Exception as exc:
             self._psutil = None
+            if not IS_WINDOWS:
+                self.stats_error = f"psutil fehlt: {exc}"
 
     # ---------------------------------------------------------------- Öffnen
     def open(self, target: str, args: str = "") -> None:
@@ -74,8 +78,11 @@ class SystemController:
             # HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2 = aus
             ctypes.windll.user32.PostMessageW(0xFFFF, 0x0112, 0xF170, 2)  # type: ignore[attr-defined]
             return
+        if op == "sleep":
+            # Hibernate=False, Force=True, WakeupEventsDisabled=False
+            ctypes.windll.powrprof.SetSuspendState(False, True, False)  # type: ignore[attr-defined]
+            return
         commands = {
-            "sleep": "rundll32.exe powrprof.dll,SetSuspendState 0,1,0",
             "shutdown": "shutdown /s /t 0",
             "restart": "shutdown /r /t 0",
             "logoff": "shutdown /l",
@@ -86,12 +93,42 @@ class SystemController:
 
     # ---------------------------------------------------------- Systemwerte
     def stats(self) -> dict:
-        if not self._psutil:
-            return {}
         try:
-            return {
-                "cpu": round(self._psutil.cpu_percent(interval=None)),
-                "ram": round(self._psutil.virtual_memory().percent),
-            }
-        except Exception:
-            return {}
+            if self._psutil:
+                return {
+                    "cpu": round(self._psutil.cpu_percent(interval=None)),
+                    "ram": round(self._psutil.virtual_memory().percent),
+                }
+            if IS_WINDOWS:
+                return self._win_stats()
+        except Exception as exc:
+            log.debug("Systemwerte nicht lesbar: %s", exc)
+        return {}
+
+    def _win_stats(self) -> dict:
+        """CPU/RAM direkt über die Windows-API (falls psutil fehlt)."""
+        import ctypes
+        from ctypes import wintypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [("dwLength", wintypes.DWORD), ("dwMemoryLoad", wintypes.DWORD)] + [
+                (n, ctypes.c_ulonglong) for n in ("t1", "a1", "t2", "a2", "t3", "a3", "a4")]
+
+        mem = MEMORYSTATUSEX()
+        mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem))  # type: ignore[attr-defined]
+
+        idle, kernel, user = wintypes.FILETIME(), wintypes.FILETIME(), wintypes.FILETIME()
+        ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user))  # type: ignore[attr-defined]
+        val = lambda ft: (ft.dwHighDateTime << 32) | ft.dwLowDateTime  # noqa: E731
+        now = (val(idle), val(kernel), val(user))
+        cpu = None
+        if self._last_times:
+            d_idle, d_kernel, d_user = (n - o for n, o in zip(now, self._last_times))
+            total = d_kernel + d_user  # Kernel-Zeit enthält die Leerlaufzeit
+            cpu = round(100 * (total - d_idle) / total) if total else 0
+        self._last_times = now
+        out = {"ram": int(mem.dwMemoryLoad)}
+        if cpu is not None:
+            out["cpu"] = max(0, min(100, cpu))
+        return out

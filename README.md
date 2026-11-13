@@ -16,8 +16,8 @@ Programme, Tastenkombinationen und vieles mehr per Fingertipp.
 | Bereich | Was geht |
 |---|---|
 | **OBS Studio** | Szene wechseln, Aufnahme/Stream starten und stoppen, Aufnahme pausieren, Audioquellen stumm schalten, Quellen ein- und ausblenden, virtuelle Kamera, Replay-Puffer und Replay speichern, Studio-Modus und Übergang, Screenshot. **Live-Status** auf den Tasten, dazu eine automatisch erzeugte Seite mit allen Szenen. |
-| **Discord** | Mikro stumm, Ton aus („taub“), **Push-to-Talk** (solange du die Taste hältst), Discord-Lautstärke |
-| **Spotify** | Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, Spotify-Lautstärke, **„Läuft gerade“ mit Cover** |
+| **Discord** | Mikro stumm, Ton aus („taub“), **Push-to-Talk** (solange du die Taste hältst). Tasten direkt am Tablet festlegen und per „An PC senden“ in Discord einlernen. |
+| **Spotify** | Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, **Lautstärke direkt in der Spotify-App**, „Gefällt mir“, **„Läuft gerade“ mit Cover** |
 | **Ton** | PC-Lautstärke ±/stumm/fester Wert, **Lautstärke pro Programm**, Windows-Mikrofon stumm |
 | **Allgemein** | Beliebige Tastenkombinationen (auch gehalten), Text schreiben, Programme, Dateien und Websites öffnen, Befehle ausführen, PC sperren, Monitor aus, Energiesparen, Neustart, Herunterfahren (mit Sicherheitsabfrage) |
 | **Mehrfach-Aktionen** | Eine Taste kann mehrere Aktionen nacheinander ausführen, mit Wartezeit dazwischen. |
@@ -74,26 +74,41 @@ Audioquelle. Die mitgelieferten Beispieltasten nutzen die Standardnamen eines de
 „Mikrofon/AUX“, „Desktop-Audio“). Benenne sie bei Bedarf um.
 
 ### Discord
-Discord lässt sich von fremden Programmen nicht direkt steuern. TabDeck drückt deshalb die **Tastenkombinationen**, die in
-Discord hinterlegt sind:
+Discord lässt sich von außen nur über **globale Tastenbelegungen** steuern. Discords eingebaute Kürzel
+(`Strg+Umschalt+M` …) wirken nur, solange das Discord-Fenster vorne ist. Deshalb einmalig einrichten,
+das geht komplett vom Tablet aus:
 
-- Discord-Standard: **Stummschalten = `Strg+Umschalt+M`**, **Ton aus = `Strg+Umschalt+D`**. Beides funktioniert sofort.
-- **Push-to-Talk**: In Discord unter *Einstellungen → Sprache & Video* den Eingabemodus „Push-to-Talk“ wählen.
-  Unter *Tastenbelegung* „Tastenbelegung aufnehmen“ anklicken und dann die **PTT-Taste auf dem Tablet** drücken.
-  TabDeck sendet dafür `F13`, eine Taste, die auf normalen Tastaturen nicht existiert und deshalb nie kollidiert.
-- Eigene Kombinationen änderst du unter **⚙️ Einstellungen → Discord**.
+1. Tablet: **⚙️ Einstellungen → Discord**. Für jede Funktion eine Taste antippen. Voreingestellt sind
+   **F14** (stumm), **F15** (taub) und **F13** (Push-to-Talk). Diese Tasten gibt es auf normalen Tastaturen nicht,
+   sie kollidieren also mit nichts.
+2. PC: Discord → **Benutzereinstellungen (⚙️) → Tastenbelegung → „Eine Tastenbelegung hinzufügen“**.
+3. Aktion **„Stummschalten umschalten“** wählen und auf **„Tastenbelegung aufnehmen“** klicken.
+4. Tablet: bei „Stummschalten“ auf **„An PC senden“** tippen. Nach 2 Sekunden drückt TabDeck die Taste
+   und Discord übernimmt sie. In Discord „Aufnahme stoppen“.
+5. Dasselbe für **„Ein- und Ausgabe deaktivieren umschalten“** (taub) und **Push-to-Talk**. Danach am Tablet **Speichern**.
 
 Da Discord seinen Status nicht verrät, merkt sich TabDeck „stumm/nicht stumm“ selbst. Stimmt die Anzeige nicht mehr
 (weil du in Discord direkt geklickt hast), setzt du sie dort mit einem Fingertipp zurück.
 
 ### Spotify
-Hier musst du nichts einrichten. TabDeck nutzt die Windows-Mediensteuerung und steuert gezielt **Spotify**, auch wenn
-nebenbei z. B. ein YouTube-Video läuft. Die Taste „Läuft gerade“ zeigt Titel, Interpret und Cover.
+**Play/Pause, weiter/zurück, Zufall und „Läuft gerade“** funktionieren ohne Einrichtung. TabDeck nutzt dafür die
+Windows-Mediensteuerung und steuert gezielt Spotify, auch wenn nebenbei z. B. ein YouTube-Video läuft.
+
+Für **„Spotify lauter/leiser/stumm“ direkt in der Spotify-App** (der Regler in Spotify bewegt sich mit, nicht nur
+der Windows-Mixer) und **„Gefällt mir“** verbindet sich TabDeck mit deinem Spotify-Konto. **Spotify verlangt dafür
+Premium.** Einmalig einrichten:
+
+1. Am PC <https://developer.spotify.com/dashboard> öffnen, mit dem Spotify-Konto anmelden und **„Create app“** wählen.
+2. Name z. B. *TabDeck*, bei „Which API/SDKs“ den Haken bei **Web API** setzen.
+3. Als **Redirect URI** genau `http://127.0.0.1:8765/spotify/callback` eintragen (steht auch zum Kopieren in den
+   TabDeck-Einstellungen) und speichern.
+4. Die **Client ID** der App kopieren. Tablet: **⚙️ Einstellungen → Spotify** → einfügen → **„Mit Spotify verbinden“**.
+5. Am PC öffnet sich der Browser: bei Spotify zustimmen. Fertig.
 
 ### Andere Programme
 Fast jedes Programm lässt sich über **Tastenkombinationen** steuern, zum Beispiel Teams, Zoom, Spiele, Photoshop oder
-Premiere. Im Editor gibt es dafür den Knopf **„Aufnehmen“**: Ist am Tablet (Book Cover Keyboard) oder am PC-Browser eine
-Tastatur angeschlossen, drückst du einfach die gewünschte Kombination.
+Premiere. Im Editor wählst du die Kombination per Fingertipp (Strg/Umschalt/Alt/Win plus Taste). Mit angeschlossener
+Tastatur (Book Cover Keyboard oder am PC-Browser) geht es auch über den Knopf **„Tastatur“**.
 
 Weitere nützliche Ziele für „Öffnen“: `spotify:`, `discord://`, `steam://rungameid/730`, `ms-settings:sound`,
 `explorer.exe`, `C:\Pfad\zum\Programm.exe` oder `https://…`.
@@ -125,7 +140,7 @@ Seiten, Rastergröße, Abstände und mehr findest du unter **⚙️ Einstellunge
 Verknüpfung zu **`start-hidden.vbs`** ablegen. Das Protokoll steht dann in `data\tabdeck.log`.
 
 **Dateien**
-- `data/config.json`: deine komplette Belegung, inklusive Port und Verbindungscode
+- `data/config.json`: deine komplette Belegung, inklusive Port, Verbindungscode und Spotify-Anmeldung (nicht weitergeben!)
 - `data/icons/`: hochgeladene Bilder
 - Neuer Verbindungscode: in `data/config.json` den Wert `"token"` leeren und TabDeck neu starten.
 
@@ -152,7 +167,10 @@ Heimnetz und nicht in öffentlichen WLANs.
 | „Der Verbindungscode stimmt nicht“ | Den Code aus dem TabDeck-Fenster am PC verwenden. Groß- und Kleinschreibung sowie der Bindestrich sind egal. |
 | OBS „nicht erreichbar“ | Läuft OBS? WebSocket-Server aktiviert? Port 4455? |
 | OBS „Passwort falsch“ | Passwort in OBS unter *Verbindungsinformationen anzeigen* kopieren und neu eintragen. |
-| Discord reagiert nicht | Kombination in Discord unter *Tastenbelegung* prüfen. Läuft Discord als Administrator, muss auch TabDeck als Administrator laufen. |
+| Discord reagiert nicht | In Discord unter *Tastenbelegung* muss eine **globale** Belegung mit genau der Taste aus den TabDeck-Einstellungen stehen (siehe oben). Läuft Discord als Administrator, muss auch TabDeck als Administrator laufen. |
+| Spotify-Lautstärke: „Premium nötig“ | Spotify erlaubt die Steuerung der App-Lautstärke nur mit Premium. Ohne Premium bleibt nur die Windows-Mixer-Lautstärke (Aktion „Lautstärke → Einzelnes Programm“). |
+| Spotify: „Kein aktives Gerät“ | In Spotify einmal auf Play drücken, dann klappt es. |
+| CPU/RAM zeigt „–“ | Unter ⚙️ → Info nachsehen, ob „CPU & RAM“ aktiv ist. TabDeck neu starten (`start.bat` installiert fehlende Pakete nach). |
 | Tasten wirken in einem Spiel nicht | Spiele mit Anti-Cheat ignorieren simulierte Tasten oft. Läuft das Spiel als Administrator, `start.bat` ebenfalls als Administrator starten. |
 | „Programm spielt gerade keinen Ton ab“ | Die Lautstärke pro Programm geht erst, wenn das Programm einmal Ton ausgegeben hat. |
 
@@ -167,9 +185,10 @@ server/                 PC-Server (Python, aiohttp)
   config.py             Konfiguration laden und speichern
   default_config.json   Startbelegung (Start, OBS, Discord, Spotify, System)
   integrations/
-    keyboard.py         Tastenkombinationen und Medientasten (pynput)
+    keyboard.py         Tastenkombinationen und Medientasten (Windows SendInput)
     audio.py            Lautstärke pro Programm und Mikrofon (pycaw)
     media.py            Spotify und „Läuft gerade“ (Windows-Medien-API)
+    spotify_api.py      Spotify-App-Lautstärke und „Gefällt mir“ (Spotify Web API)
     obs.py              OBS-WebSocket-v5-Client mit Live-Status
     system.py           Öffnen, Befehle, Energie, CPU und RAM
 web/                    Tablet-Oberfläche (HTML/CSS/JS, ohne externe Abhängigkeiten)

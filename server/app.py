@@ -13,6 +13,7 @@ import logging
 import re
 import socket
 import time
+import webbrowser
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
@@ -25,6 +26,7 @@ from .integrations.audio import AudioController
 from .integrations.keyboard import Keyboard
 from .integrations.media import MediaController
 from .integrations.obs import OBSClient
+from .integrations.spotify_api import SpotifyAPI
 from .integrations.system import SystemController
 
 log = logging.getLogger("tabdeck")
@@ -63,12 +65,14 @@ class DeckServer:
         self.media = MediaController(self.keyboard)
         self.system = SystemController()
         self.obs = OBSClient(self._on_obs_change)
+        self.spotify = SpotifyAPI(store.secrets["spotify"], store.save, self._on_spotify_change)
         self.runner = ActionRunner(self)
         self.state: dict = {
             "obs": self.obs.state,
             "audio": {"available": self.audio.available},
             "media": {"available": self.media.available},
-            "stats": {},
+            "stats": self.system.stats(),
+            "spotify": self.spotify.state,
             "discord": {"mute": False, "deafen": False},
             "toggles": {},
         }
@@ -83,6 +87,8 @@ class DeckServer:
         app.router.add_get("/", self.handle_index)
         app.router.add_get("/ws", self.handle_ws)
         app.router.add_get("/connect", self.handle_connect)
+        app.router.add_get("/spotify/login", self.handle_spotify_login)
+        app.router.add_get("/spotify/callback", self.handle_spotify_callback)
         app.router.add_get("/manifest.webmanifest", self.handle_file("manifest.webmanifest", "application/manifest+json"))
         app.router.add_get("/sw.js", self.handle_file("sw.js", "text/javascript"))
         app.router.add_static("/web/", WEB_DIR)
@@ -101,7 +107,10 @@ class DeckServer:
 
     async def _startup(self, app: web.Application) -> None:
         self.obs.configure(self.store.obs)
-        self._bg_tasks.append(asyncio.create_task(self._poll_loop(), name="poll"))
+        loops = [("stats", self._poll_stats, 1.0), ("media", self._poll_media, 1.5),
+                 ("audio", self.refresh_audio, 2.0), ("spotify", self.spotify.poll, 3.0)]
+        for name, fn, interval in loops:
+            self._bg_tasks.append(asyncio.create_task(self._loop(name, fn, interval), name=name))
 
     async def _shutdown(self, app: web.Application) -> None:
         self.keyboard.release_all()
@@ -126,6 +135,38 @@ class DeckServer:
     def connect_urls(self) -> list[str]:
         port = self.store.data["server"]["port"]
         return [f"http://{ip}:{port}/?token={self.store.token}" for ip in lan_addresses()]
+
+    @staticmethod
+    def _is_local(request: web.Request) -> bool:
+        return (request.remote or "") in ("127.0.0.1", "::1", "localhost")
+
+    def spotify_redirect_uri(self) -> str:
+        return f"http://127.0.0.1:{self.store.data['server']['port']}/spotify/callback"
+
+    async def handle_spotify_login(self, request: web.Request) -> web.StreamResponse:
+        if not self._is_local(request):
+            raise web.HTTPForbidden(text="Die Spotify-Anmeldung funktioniert nur direkt am PC.")
+        try:
+            url = self.spotify.login_url(self.spotify_redirect_uri())
+        except ActionError as exc:
+            return web.Response(text=MESSAGE_PAGE.format(icon="⚠️", title="Spotify", text=str(exc)), content_type="text/html")
+        raise web.HTTPFound(url)
+
+    async def handle_spotify_callback(self, request: web.Request) -> web.StreamResponse:
+        if not self._is_local(request):
+            raise web.HTTPForbidden()
+        q = request.query
+        try:
+            await self.spotify.handle_callback(q.get("code"), q.get("state"), q.get("error"))
+            name = self.spotify.state.get("user") or "dein Konto"
+            hint = "" if self.spotify.state.get("premium") is not False else (
+                "<br><br>⚠️ Dein Konto ist kein Premium-Konto. Spotify erlaubt die Lautstärke-Steuerung nur mit Premium.")
+            html = MESSAGE_PAGE.format(icon="✅", title="Spotify verbunden",
+                                       text=f"TabDeck ist jetzt mit {name} verbunden. Du kannst dieses Fenster schließen.{hint}")
+        except ActionError as exc:
+            html = MESSAGE_PAGE.format(icon="⚠️", title="Spotify-Anmeldung fehlgeschlagen", text=str(exc))
+        await self.broadcast_state("spotify")
+        return web.Response(text=html, content_type="text/html")
 
     async def handle_connect(self, request: web.Request) -> web.StreamResponse:
         """Zeigt am PC einen QR-Code zum Verbinden – nur vom PC selbst aus abrufbar."""
@@ -199,6 +240,7 @@ class DeckServer:
             "keyboard": {"ok": self.keyboard.available, "error": self.keyboard.error},
             "audio": {"ok": self.audio.available, "error": self.audio.error},
             "media": {"ok": self.media.available, "error": self.media.error},
+            "stats": {"ok": bool(self.system.stats()), "error": self.system.stats_error or "CPU/RAM nicht lesbar"},
         }
 
     async def _dispatch(self, ws: web.WebSocketResponse, conn_id: str, data: dict) -> None:
@@ -297,6 +339,28 @@ class DeckServer:
         if method == "obs_reconnect":
             self.obs.restart()
             return True
+        if method == "send_keys":
+            # Tastenkombination (nach Countdown) senden – z. B. zum Aufnehmen in Discord
+            await asyncio.sleep(max(0.0, min(10.0, float(p.get("delay") or 0))))
+            await asyncio.to_thread(self.keyboard.tap, p.get("keys", ""))
+            return True
+        if method == "spotify_info":
+            return {"redirect_uri": self.spotify_redirect_uri(),
+                    "client_id": self.store.secrets["spotify"].get("client_id", ""),
+                    "login_url": f"http://127.0.0.1:{self.store.data['server']['port']}/spotify/login"}
+        if method == "spotify_setup":
+            client_id = (p.get("client_id") or "").strip()
+            if not re.fullmatch(r"[0-9a-fA-F]{32}", client_id):
+                raise ActionError("Die Client-ID besteht aus 32 Zeichen (0–9, a–f) – bitte genau kopieren")
+            self.spotify.set_client_id(client_id)
+            login = f"http://127.0.0.1:{self.store.data['server']['port']}/spotify/login"
+            opened = await asyncio.to_thread(webbrowser.open, login)
+            await self.broadcast_state("spotify")
+            return {"opened": bool(opened), "login_url": login}
+        if method == "spotify_disconnect":
+            self.spotify.disconnect()
+            await self._on_spotify_change()
+            return True
         if method == "discord_reset":
             self.state["discord"] = {"mute": False, "deafen": False}
             await self.broadcast_state("discord")
@@ -347,38 +411,50 @@ class DeckServer:
         self.state["obs"] = obs_state
         await self.broadcast_state("obs")
 
+    async def _on_spotify_change(self) -> None:
+        self.state["spotify"] = self.spotify.state
+        await self.broadcast_state("spotify")
+
     async def refresh_audio(self) -> None:
+        if not self.audio.available:
+            return
         snap = await self.audio.snapshot()
         if snap != self.state["audio"]:
             self.state["audio"] = snap
             await self.broadcast_state("audio")
 
-    async def _poll_loop(self) -> None:
-        tick = 0
+    async def _poll_stats(self) -> None:
+        stats = await asyncio.to_thread(self.system.stats)
+        if stats != self.state["stats"]:
+            self.state["stats"] = stats
+            await self.broadcast_state("stats")
+
+    async def _poll_media(self) -> None:
+        if not self.media.available:
+            return
+        media = await self.media.snapshot()
+        if media != self.state["media"]:
+            self.state["media"] = media
+            await self.broadcast_state("media")
+
+    async def _loop(self, name: str, fn, interval: float) -> None:
+        """Jede Abfrage läuft unabhängig – hängt eine (z. B. Windows-Medien), laufen die anderen weiter."""
+        failures = 0
         while True:
-            await asyncio.sleep(self.POLL_INTERVAL)
+            await asyncio.sleep(interval if failures < 3 else min(30.0, interval * failures))
             if not self.clients:
                 continue
-            tick += 1
             try:
-                changed = []
-                stats = await asyncio.to_thread(self.system.stats)
-                if stats != self.state["stats"]:
-                    self.state["stats"] = stats
-                    changed.append("stats")
-                if self.media.available:
-                    media = await self.media.snapshot()
-                    if media != self.state["media"]:
-                        self.state["media"] = media
-                        changed.append("media")
-                if changed:
-                    await self.broadcast_state(*changed)
-                if self.audio.available and tick % 2 == 0:
-                    await self.refresh_audio()
+                await asyncio.wait_for(fn(), timeout=8)
+                failures = 0
             except asyncio.CancelledError:
                 raise
+            except asyncio.TimeoutError:
+                failures += 1
+                log.warning("Abfrage „%s“ hat zu lange gedauert", name)
             except Exception:
-                log.exception("Fehler beim Aktualisieren des Zustands")
+                failures += 1
+                log.exception("Fehler bei der Abfrage „%s“", name)
 
 
 # ====================================================================== QR
@@ -405,6 +481,13 @@ def print_qr(text: str) -> None:
         qr.print_ascii(invert=True)
     except Exception:
         pass
+
+
+MESSAGE_PAGE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>TabDeck</title>
+<style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1115;color:#e8eaf0;
+font-family:system-ui,Segoe UI,sans-serif}}div{{max-width:520px;text-align:center;padding:24px;line-height:1.5}}
+.i{{font-size:56px}}</style></head><body><div><div class="i">{icon}</div><h1>{title}</h1><p>{text}</p></div></body></html>"""
 
 
 CONNECT_PAGE = """<!doctype html>

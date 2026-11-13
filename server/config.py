@@ -30,8 +30,9 @@ DEFAULT_SETTINGS = {
     "haptics": True,
     "gap": 12,
     "radius": 18,
-    "discord": {"mute": "ctrl+shift+m", "deafen": "ctrl+shift+d", "ptt": "f13"},
+    "discord": {"mute": "f14", "deafen": "f15", "ptt": "f13"},
 }
+CONFIG_VERSION = 2
 DEFAULT_OBS = {"enabled": True, "host": "127.0.0.1", "port": 4455, "password": ""}
 
 
@@ -87,6 +88,9 @@ class ConfigStore:
         _merge_defaults(self.data["obs"], DEFAULT_OBS)
         if not self.data.get("pages"):
             self.data["pages"] = [{"id": "main", "name": "Start", "buttons": {}}]
+        self.data.setdefault("secrets", {})
+        self.data["secrets"].setdefault("spotify", {})
+        self._migrate()
 
         env_token = os.environ.get("TABDECK_TOKEN")
         if env_token:
@@ -94,6 +98,31 @@ class ConfigStore:
         if not normalize_token(self.data["server"].get("token")):
             self.data["server"]["token"] = new_token()
         self.save()
+
+    def _migrate(self) -> None:
+        version = self.data.get("version", 1)
+        if version < 2:
+            # Spotify-Lautstärke: vom Windows-Mixer auf die echte Lautstärke in der Spotify-App umstellen
+            ops = {"up": "volume_up", "down": "volume_down", "set": "volume_set", "toggle_mute": "mute_toggle"}
+            changed = 0
+            for page in self.data.get("pages", []):
+                for btn in (page.get("buttons") or {}).values():
+                    for i, a in enumerate(btn.get("actions") or []):
+                        app = str(a.get("app", "")).lower().removesuffix(".exe")
+                        if a.get("type") == "volume" and a.get("target") == "app" and app == "spotify" and a.get("op") in ops:
+                            step = a.get("step", 10)
+                            btn["actions"][i] = {"type": "spotify", "op": ops[a["op"]], "step": 10 if step == 5 else step}
+                            changed += 1
+            # Discords eingebaute Kürzel (Strg+Umschalt+M/D) wirken nur im Discord-Fenster –
+            # für globale Tastenbelegungen kollisionsfreie Tasten verwenden
+            d = self.data.get("settings", {}).get("discord", {})
+            if d.get("mute") == "ctrl+shift+m":
+                d["mute"] = "f14"
+            if d.get("deafen") == "ctrl+shift+d":
+                d["deafen"] = "f15"
+            if changed:
+                log.info("%d Spotify-Lautstärke-Tasten auf die Spotify-App-Lautstärke umgestellt", changed)
+        self.data["version"] = CONFIG_VERSION
 
     def save(self) -> None:
         tmp = self.path.with_suffix(".tmp")
@@ -108,6 +137,10 @@ class ConfigStore:
     @property
     def settings(self) -> dict:
         return self.data["settings"]
+
+    @property
+    def secrets(self) -> dict:
+        return self.data["secrets"]
 
     @property
     def obs(self) -> dict:
@@ -126,6 +159,7 @@ class ConfigStore:
         """Konfiguration für das Tablet – ohne Server-Abschnitt (Token, Port)."""
         view = copy.deepcopy(self.data)
         view.pop("server", None)
+        view.pop("secrets", None)
         return view
 
     def update_from_client(self, new: dict) -> None:
@@ -148,6 +182,8 @@ class ConfigStore:
 
         merged = copy.deepcopy(new)
         merged["server"] = self.data["server"]
+        merged["secrets"] = self.data.get("secrets", {})
+        merged["version"] = CONFIG_VERSION
         merged.setdefault("settings", {})
         _merge_defaults(merged["settings"], DEFAULT_SETTINGS)
         merged.setdefault("obs", {})

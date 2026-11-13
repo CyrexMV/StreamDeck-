@@ -110,7 +110,16 @@ const ACTIONS = {
   },
   spotify: {
     name: "Spotify", group: "Medien & Ton", defaults: { op: "play_pause" },
-    fields: [{ k: "op", label: "Funktion", type: "select", options: [["play_pause", "Play/Pause"], ["next", "Nächster Titel"], ["previous", "Vorheriger Titel"], ["shuffle", "Zufallswiedergabe an/aus"], ["repeat", "Wiederholen umschalten"]] }],
+    fields: [
+      { k: "op", label: "Funktion", type: "select", options: [["play_pause", "Play/Pause"], ["next", "Nächster Titel"], ["previous", "Vorheriger Titel"],
+        ["volume_up", "Spotify lauter (in der App)"], ["volume_down", "Spotify leiser (in der App)"], ["volume_set", "Spotify-Lautstärke auf Wert setzen"],
+        ["mute_toggle", "Spotify stumm an/aus (in der App)"], ["like", "Titel liken / entfernen (❤️)"],
+        ["shuffle", "Zufallswiedergabe an/aus"], ["repeat", "Wiederholen umschalten"]] },
+      { k: "step", label: "Schritt in %", type: "number", min: 1, max: 100, show: (a) => a.op === "volume_up" || a.op === "volume_down" },
+      { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "volume_set" },
+      { k: "_hint", type: "info", show: (a) => ["volume_up", "volume_down", "volume_set", "mute_toggle", "like"].includes(a.op),
+        html: "Ändert die Lautstärke <b>direkt in der Spotify-App</b>. Dafür einmalig unter ⚙️ Einstellungen → Spotify verbinden (Spotify Premium nötig)." },
+    ],
   },
   volume: {
     name: "Lautstärke", group: "Medien & Ton", defaults: { target: "master", op: "up", step: 5, app: "" },
@@ -169,8 +178,10 @@ const TEMPLATES = [
     T("Weiter", "⏭️", C.spotify, [{ type: "spotify", op: "next" }]),
     T("Zurück", "⏮️", C.spotify, [{ type: "spotify", op: "previous" }]),
     T("Zufall", "🔀", C.spotify, [{ type: "spotify", op: "shuffle" }], { active: ACT(null, "Zufall an", "#14833b") }),
-    T("Spotify leiser", "🔉", C.vol, [{ type: "volume", target: "app", app: "Spotify.exe", op: "down", step: 5 }]),
-    T("Spotify lauter", "🔊", C.vol, [{ type: "volume", target: "app", app: "Spotify.exe", op: "up", step: 5 }]),
+    T("Spotify leiser", "🔉", C.spotify, [{ type: "spotify", op: "volume_down", step: 10 }]),
+    T("Spotify lauter", "🔊", C.spotify, [{ type: "spotify", op: "volume_up", step: 10 }]),
+    T("Spotify stumm", "🔈", C.spotify, [{ type: "spotify", op: "mute_toggle" }], { active: ACT("🔇", "Spotify aus") }),
+    T("Gefällt mir", "🤍", C.spotify, [{ type: "spotify", op: "like" }], { active: ACT("💚", "Gespeichert", "#14833b") }),
     T("Spotify öffnen", "🎧", C.spotify, [{ type: "open", target: "spotify:" }]),
   ] },
   { group: "OBS", items: [
@@ -300,7 +311,7 @@ function onMessage(msg) {
     case "state":
       Object.assign(App.state, msg.state || {});
       refreshFaces();
-      document.dispatchEvent(new CustomEvent("tabdeck:state"));
+      document.dispatchEvent(new CustomEvent("tabdeck:state", { detail: Object.keys(msg.state || {}) }));
       break;
     case "result":
       if (!msg.ok) {
@@ -476,6 +487,8 @@ function actionActive(a) {
     case "spotify":
       if (a.op === "play_pause") return !!m.spotify_playing;
       if (a.op === "shuffle") return !!m.spotify_shuffle;
+      if (a.op === "like") return !!st.spotify?.liked;
+      if (a.op === "mute_toggle") return st.spotify?.volume === 0;
       return null;
     case "media":
       return a.op === "play_pause" ? !!m.playing : null;
@@ -496,6 +509,10 @@ function isActive(btn, pageId, slot) {
 
 function valueText(btn) {
   const a = (btn.actions || [])[0];
+  if (a && a.type === "spotify" && /^volume_/.test(a.op || "")) {
+    const v = App.state.spotify?.volume;
+    return v != null ? `${v}%` : "";
+  }
   if (!a || a.type !== "volume" || !["up", "down", "set"].includes(a.op)) return "";
   const au = App.state.audio || {};
   const t = a.target === "app" ? (au.apps || {})[appKey(a.app)] : au[a.target];
@@ -809,41 +826,116 @@ function keyNameFromEvent(e) {
   return null;
 }
 
-function hotkeyInput(action, f, onChange) {
-  const input = h("input", { type: "text", value: action[f.k] ?? "", placeholder: f.ph || "", autocapitalize: "off", spellcheck: "false",
-    oninput: (e) => { action[f.k] = e.target.value.trim(); onChange(); } });
+/* ---------------------------------------------------- Tastenauswahl (ohne Tastatur) */
+const MOD_KEYS = [["ctrl", "Strg"], ["shift", "Umschalt"], ["alt", "Alt"], ["win", "Win"]];
+const MOD_ALIAS = { ctrl: "ctrl", strg: "ctrl", control: "ctrl", shift: "shift", umschalt: "shift", alt: "alt", win: "win", windows: "win", cmd: "win", meta: "win" };
+const range = (a, b, fn) => Array.from({ length: b - a + 1 }, (_, i) => fn(a + i));
+const PICK_KEYS = [
+  ["F13–F24 (kollisionsfrei, ideal für Discord)", range(13, 24, (i) => [`f${i}`, `F${i}`])],
+  ["F1–F12", range(1, 12, (i) => [`f${i}`, `F${i}`])],
+  ["Buchstaben", range(97, 122, (c) => [String.fromCharCode(c), String.fromCharCode(c).toUpperCase()])],
+  ["Zahlen", range(0, 9, (i) => [String(i), String(i)])],
+  ["Ziffernblock", [...range(0, 9, (i) => [`num${i}`, `Num ${i}`]), ["numplus", "Num +"], ["numminus", "Num −"], ["nummultiply", "Num ×"], ["numdivide", "Num ÷"]]],
+  ["Sondertasten", [["space", "Leertaste"], ["enter", "Enter"], ["esc", "Esc"], ["tab", "Tab"], ["backspace", "Rücktaste"],
+    ["delete", "Entf"], ["insert", "Einfg"], ["home", "Pos1"], ["end", "Ende"], ["pageup", "Bild ↑"], ["pagedown", "Bild ↓"],
+    ["up", "Pfeil ↑"], ["down", "Pfeil ↓"], ["left", "Pfeil ←"], ["right", "Pfeil →"], ["printscreen", "Druck"], ["pause", "Pause"]]],
+  ["Medientasten", [["play_pause", "Play/Pause"], ["next", "Nächster Titel"], ["previous", "Vorheriger Titel"],
+    ["volume_up", "Lauter"], ["volume_down", "Leiser"], ["volume_mute", "Stumm"]]],
+];
+const KEY_LABELS = Object.fromEntries(PICK_KEYS.flatMap(([, items]) => items));
+
+function splitCombo(value) {
+  const parts = String(value || "").toLowerCase().split("+").map((x) => x.trim()).filter(Boolean);
+  const mods = new Set();
+  let key = "";
+  for (const p of parts) {
+    if (MOD_ALIAS[p]) mods.add(MOD_ALIAS[p]);
+    else key = p;
+  }
+  return { mods, key };
+}
+const joinCombo = (mods, key) => [...MOD_KEYS.map(([m]) => m).filter((m) => mods.has(m)), key].filter(Boolean).join("+");
+const prettyCombo = (value) => {
+  const { mods, key } = splitCombo(value);
+  return [...MOD_KEYS.filter(([m]) => mods.has(m)).map(([, l]) => l), KEY_LABELS[key] || key.toUpperCase()].filter(Boolean).join(" + ");
+};
+
+/* Tastenkombination wählen: per Antippen (Tablet), per Tastatur aufnehmen oder eintippen.
+   opts.send: zusätzlich „An PC senden“ (zum Einlernen in Discord & Co.) */
+function hotkeyInput(action, f, onChange, opts = {}) {
+  const wrap = h("div", { class: "hotkey" });
   let listening = false;
-  const rec = h("button", { class: "btn small", html: icon("rec") + "Aufnehmen", title: "Tastenkombination über eine angeschlossene Tastatur aufnehmen" });
+  const set = (v) => { action[f.k] = v; onChange(); render(); };
+
   const onKey = (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (["Control", "Shift", "Alt", "Meta", "AltGraph", "OS"].includes(e.key)) return;
     const name = keyNameFromEvent(e);
     if (!name) return;
-    const mods = [];
-    if (e.ctrlKey) mods.push("ctrl");
-    if (e.shiftKey) mods.push("shift");
-    if (e.altKey) mods.push("alt");
-    if (e.metaKey) mods.push("win");
-    action[f.k] = [...mods, name].join("+");
-    input.value = action[f.k];
-    stop();
-    onChange();
+    const mods = new Set();
+    if (e.ctrlKey) mods.add("ctrl");
+    if (e.shiftKey) mods.add("shift");
+    if (e.altKey) mods.add("alt");
+    if (e.metaKey) mods.add("win");
+    stopListening();
+    set(joinCombo(mods, name));
   };
-  const stop = () => { listening = false; window.removeEventListener("keydown", onKey, true); rec.classList.remove("primary"); rec.innerHTML = icon("rec") + "Aufnehmen"; };
-  rec.onclick = () => {
-    if (listening) { stop(); return; }
-    listening = true;
-    rec.classList.add("primary");
-    rec.textContent = "Tasten drücken …";
-    window.addEventListener("keydown", onKey, true);
+  const stopListening = () => { listening = false; window.removeEventListener("keydown", onKey, true); };
+
+  function render() {
+    const { mods, key } = splitCombo(action[f.k]);
+    const known = key === "" || key in KEY_LABELS;
+    fill(wrap,
+      h("div", { class: "row wrap" },
+        MOD_KEYS.map(([m, label]) => h("button", { class: "chip" + (mods.has(m) ? " on" : ""), text: label,
+          onclick: () => { mods.has(m) ? mods.delete(m) : mods.add(m); set(joinCombo(mods, key)); } })),
+        h("span", { class: "plus", text: "+" }),
+        h("select", { class: "key-select", value: known ? key : "__custom", onchange: (e) => { if (e.target.value !== "__custom") set(joinCombo(mods, e.target.value)); } },
+          h("option", { value: "", text: "– Taste wählen –" }),
+          known ? null : h("option", { value: "__custom", text: key.toUpperCase() }),
+          PICK_KEYS.map(([group, items]) => h("optgroup", { label: group }, items.map(([v, l]) => h("option", { value: v, text: l })))))),
+      h("div", { class: "row", style: { marginTop: "8px" } },
+        h("input", { type: "text", value: action[f.k] ?? "", placeholder: f.ph || "", autocapitalize: "off", spellcheck: "false",
+          oninput: (e) => { action[f.k] = e.target.value.trim(); onChange(); }, onchange: () => render() }),
+        h("button", { class: "btn small" + (listening ? " primary" : ""), html: listening ? "Tasten drücken …" : icon("rec") + "Tastatur",
+          title: "Mit angeschlossener Tastatur (z. B. Book Cover Keyboard oder am PC) aufnehmen",
+          onclick: () => {
+            if (listening) { stopListening(); render(); return; }
+            listening = true; window.addEventListener("keydown", onKey, true); render();
+          } }),
+        opts.send ? sendButton(() => action[f.k]) : null),
+      action[f.k] ? h("div", { class: "help", text: "Ergebnis: " + prettyCombo(action[f.k]) }) : null,
+    );
+  }
+  render();
+  return wrap;
+}
+
+/* Sendet eine Kombination nach kurzem Countdown an den PC – zum Einlernen in Discord */
+function sendButton(getKeys) {
+  const btn = h("button", { class: "btn small", html: icon("play") + "An PC senden" });
+  btn.onclick = async () => {
+    const keys = getKeys();
+    if (!keys) { toast("Bitte zuerst eine Taste wählen", "error"); return; }
+    btn.disabled = true;
+    for (let i = 2; i > 0; i--) { btn.textContent = `Sende in ${i} …`; await new Promise((r) => setTimeout(r, 1000)); }
+    try {
+      await rpc("send_keys", { keys, delay: 0 });
+      btn.textContent = "Gesendet ✓";
+    } catch (err) {
+      toast(err.message, "error");
+      btn.textContent = "Fehler";
+    }
+    setTimeout(() => { btn.disabled = false; btn.innerHTML = icon("play") + "An PC senden"; }, 1500);
   };
-  return h("div", { class: "row" }, input, rec);
+  return btn;
 }
 
 function fieldEl(action, f, rerender, onChange) {
   const val = action[f.k];
   let input;
+  if (f.type === "info") return h("div", { class: "help", html: f.html, style: { marginBottom: "10px" } });
   switch (f.type) {
     case "select":
       input = h("select", { value: val ?? f.options[0][0], onchange: (e) => { action[f.k] = e.target.value; onChange(); rerender(); } },
@@ -1084,7 +1176,7 @@ function openSettings() {
   let tab = "general";
   const tabsBar = h("div", { class: "tabs2" });
   const body = h("div", { class: "m-body" });
-  const TABS = [["general", "Allgemein"], ["pages", "Seiten"], ["obs", "OBS"], ["discord", "Discord"], ["backup", "Sicherung"], ["info", "Info"]];
+  const TABS = [["general", "Allgemein"], ["pages", "Seiten"], ["discord", "Discord"], ["spotify", "Spotify"], ["obs", "OBS"], ["backup", "Sicherung"], ["info", "Info"]];
 
   const num = (obj, key, label, min, max, help) => h("div", { class: "field" }, h("label", { text: label }),
     h("input", { type: "number", min, max, value: obj[key], inputmode: "numeric", oninput: (e) => { const v = Number(e.target.value); if (v >= min && v <= max) obj[key] = v; } }),
@@ -1143,16 +1235,22 @@ function openSettings() {
       ];
     },
     discord: () => [
-      h("div", { class: "section" }, h("h3", { text: "Discord-Tastenkombinationen" }),
-        h("p", { class: "help", html: "Discord erlaubt fremden Programmen keine direkte Steuerung. Deshalb drückt TabDeck die Tastenkombinationen, die du in Discord unter <b>Einstellungen → Tastenbelegung</b> festlegst. Standard in Discord: Stummschalten <code>ctrl+shift+m</code>, Ton aus <code>ctrl+shift+d</code>." }),
-        hotkeyRow(s.discord, "mute", "Stummschalten umschalten"),
-        hotkeyRow(s.discord, "deafen", "Ton aus (taub) umschalten"),
-        hotkeyRow(s.discord, "ptt", "Push-to-Talk"),
-        h("p", { class: "help", html: "Tipp für Push-to-Talk: Nimm eine Taste wie <code>f13</code>, die es auf normalen Tastaturen nicht gibt. In Discord „Tastenbelegung aufnehmen“ klicken und dann die PTT-Taste auf dem Tablet drücken – Discord übernimmt sie." })),
+      h("div", { class: "section" }, h("h3", { text: "Discord-Tasten festlegen" }),
+        h("p", { class: "help", html: "Discord lässt sich von außen nur über <b>globale Tastenbelegungen</b> steuern. Discords eingebaute Kürzel wie Strg+Umschalt+M wirken nur, wenn das Discord-Fenster vorne ist. Deshalb einmalig so einrichten:" }),
+        h("ol", { class: "steps" },
+          h("li", { html: "Unten für jede Funktion eine Taste wählen. Am besten <b>F13–F24</b>: Die gibt es auf normalen Tastaturen nicht, sie stören also nie." }),
+          h("li", { html: "Am PC in Discord: <b>Benutzereinstellungen (⚙️) → Tastenbelegung → „Eine Tastenbelegung hinzufügen“</b>." }),
+          h("li", { html: "Aktion wählen (<b>Stummschalten umschalten</b> / <b>Ein- und Ausgabe deaktivieren umschalten</b> bzw. <b>Push-to-Talk</b>), dann <b>„Tastenbelegung aufnehmen“</b> klicken." }),
+          h("li", { html: "Hier am Tablet bei der passenden Funktion <b>„An PC senden“</b> tippen. Nach 2 Sekunden drückt TabDeck die Taste und Discord übernimmt sie. Dann in Discord <b>„Aufnahme stoppen“</b> klicken." }),
+          h("li", { html: "Unten auf <b>Speichern</b> tippen." })),
+        hotkeyRow(s.discord, "mute", "🎙️ Stummschalten umschalten"),
+        hotkeyRow(s.discord, "deafen", "🎧 Ton aus („taub“) umschalten"),
+        hotkeyRow(s.discord, "ptt", "🗣️ Push-to-Talk (wird gehalten, solange du die Taste drückst)")),
       h("div", { class: "section" }, h("h3", { text: "Anzeige-Status" }),
-        h("p", { class: "help", text: "Ob Discord stumm ist, kann TabDeck nicht auslesen – es merkt sich deine Tastendrücke. Wenn die Anzeige nicht mehr stimmt (z. B. weil du in Discord direkt geklickt hast), setze sie hier zurück." }),
+        h("p", { class: "help", text: "Ob Discord stumm ist, kann TabDeck nicht auslesen. Es merkt sich deine Tastendrücke. Stimmt die Anzeige nicht mehr (z. B. weil du in Discord direkt geklickt hast), setze sie hier zurück." }),
         h("button", { class: "btn", text: "Status zurücksetzen (nicht stumm)", onclick: () => rpc("discord_reset").then(() => toast("Zurückgesetzt", "ok")).catch((e) => toast(e.message, "error")) })),
     ],
+    spotify: () => spotifySettings(),
     backup: () => [
       h("div", { class: "section" }, h("h3", { text: "Sichern" }),
         h("p", { class: "help", text: "Lädt deine komplette Tastenbelegung als Datei herunter." }),
@@ -1183,6 +1281,8 @@ function openSettings() {
         h("div", { class: "section" }, h("h3", { text: "TabDeck " + (App.version || "") }),
           h("div", { class: "feature-list" },
             line("Tastatur & Medientasten", f.keyboard), line("Lautstärke pro Programm", f.audio), line("Läuft gerade / Spotify", f.media),
+            line("CPU & RAM", f.stats),
+            line("Spotify-App-Lautstärke", { ok: !!App.state.spotify?.connected, error: App.state.spotify?.error || "nicht verbunden (Einstellungen → Spotify)" }),
             line("OBS", { ok: !!App.state.obs?.connected, error: App.state.obs?.error || (draft.obs.enabled ? "nicht verbunden" : "deaktiviert") }))),
         h("div", { class: "section" }, h("h3", { text: "Tipps fürs Tablet" }),
           h("ul", { class: "help", style: { paddingLeft: "18px", margin: 0 } },
@@ -1198,12 +1298,20 @@ function openSettings() {
     },
   };
 
+  let shownTab = null;
+  const cleanup = () => { for (const c of body.children) c._cleanup?.(); };
   const show = () => {
     tabsBar.replaceChildren(...TABS.map(([id, label]) => h("button", { class: tab === id ? "on" : "", text: label, onclick: () => { tab = id; show(); } })));
+    const scroll = body.scrollTop;
+    cleanup();
     fill(body, views[tab]());
-    body.scrollTop = 0;
+    body.scrollTop = shownTab === tab ? scroll : 0;
+    shownTab = tab;
   };
-  const onState = () => { if (tab === "obs" || tab === "info") show(); };
+  const onState = (e) => {
+    const keys = e.detail || [];
+    if ((tab === "obs" && keys.includes("obs")) || (tab === "info" && (keys.includes("obs") || keys.includes("spotify")))) show();
+  };
   document.addEventListener("tabdeck:state", onState);
 
   const m = openModal({
@@ -1217,15 +1325,61 @@ function openSettings() {
         draft.obs.port = Number(draft.obs.port) || 4455;
         if (await saveConfig(draft, "Gespeichert")) m.close();
       } })],
-    onClose: () => document.removeEventListener("tabdeck:state", onState),
+    onClose: () => { document.removeEventListener("tabdeck:state", onState); cleanup(); },
   });
   show();
 }
 
+function spotifySettings() {
+  const box = h("div");
+  const st = () => App.state.spotify || {};
+  const idInput = h("input", { type: "text", placeholder: "32 Zeichen, z. B. 1a2b3c…", spellcheck: "false", autocapitalize: "off" });
+  const copyRow = (text) => h("div", { class: "copy-row" }, h("code", { text }),
+    h("button", { class: "btn small", text: "Kopieren", onclick: () => navigator.clipboard?.writeText(text).then(() => toast("Kopiert", "ok")).catch(() => toast("Bitte manuell markieren", "error")) }));
+  const render = (info) => {
+    const sp = st();
+    if (info?.client_id && !idInput.value) idInput.value = info.client_id;
+    const status = sp.connected
+      ? h("span", { class: "pill ok", text: `verbunden${sp.user ? " als " + sp.user : ""}${sp.premium === false ? " · kein Premium!" : ""}${sp.volume != null ? ` · Lautstärke ${sp.volume}%` : ""}` })
+      : h("span", { class: "pill bad", text: sp.configured ? "noch nicht angemeldet" : "nicht eingerichtet" });
+    fill(box,
+      h("div", { class: "section" }, h("h3", { text: "Lautstärke direkt in der Spotify-App" }),
+        h("p", { class: "help", html: "Windows kann nur die Mixer-Lautstärke ändern (das hörst du nur auf dem Kopfhörer, der Regler in Spotify bleibt gleich). Für den <b>echten Spotify-Regler</b> verbindet sich TabDeck mit deinem Spotify-Konto. <b>Spotify verlangt dafür Premium.</b>" }),
+        h("div", { style: { margin: "6px 0 14px" } }, status),
+        sp.error && sp.connected ? h("p", { class: "help", style: { color: "#ff7b7f" }, text: sp.error }) : null,
+        h("ol", { class: "steps" },
+          h("li", { html: "Am PC <b>developer.spotify.com/dashboard</b> öffnen, mit deinem Spotify-Konto anmelden und <b>„Create app“</b> wählen." }),
+          h("li", { html: "Name z. B. <b>TabDeck</b>, Beschreibung beliebig, bei <b>„Which API/SDKs“</b> den Haken bei <b>Web API</b> setzen." }),
+          h("li", { html: "Als <b>Redirect URI</b> genau diese Adresse eintragen und auf „Add“ klicken:" })),
+        info ? copyRow(info.redirect_uri) : h("p", { class: "help", text: "lädt …" }),
+        h("ol", { class: "steps", start: 4, style: { marginTop: "12px" } },
+          h("li", { html: "Speichern, dann in der App unter <b>Settings</b> die <b>Client ID</b> kopieren und hier einfügen:" })),
+        h("div", { class: "row" }, idInput,
+          h("button", { class: "btn primary", text: "Mit Spotify verbinden", onclick: async () => {
+            try {
+              const res = await rpc("spotify_setup", { client_id: idInput.value });
+              toast(res.opened ? "Am PC hat sich der Browser geöffnet – dort bei Spotify zustimmen" : "Öffne am PC: " + res.login_url, "ok");
+            } catch (err) { toast(err.message, "error"); }
+          } })),
+        h("p", { class: "help", style: { marginTop: "10px" }, html: info ? `Öffnet sich am PC kein Browser, dort diese Adresse aufrufen: <code>${esc(info.login_url)}</code>` : "" }),
+        sp.connected ? h("button", { class: "btn danger", style: { marginTop: "8px" }, text: "Spotify trennen", onclick: () => rpc("spotify_disconnect").then(() => toast("Getrennt")).catch((e) => toast(e.message, "error")) }) : null),
+      h("div", { class: "section" }, h("h3", { text: "Ohne Verbindung" }),
+        h("p", { class: "help", text: "Play/Pause, Weiter, Zurück, Zufall und „Läuft gerade“ funktionieren auch ohne Spotify-Anmeldung und ohne Premium – nur die Lautstärke in der App und „Gefällt mir“ brauchen die Verbindung." })),
+    );
+  };
+  let info = null;
+  rpc("spotify_info").then((r) => { info = r; render(info); }).catch(() => render(null));
+  const onState = (e) => { if ((e.detail || []).includes("spotify")) render(info); };
+  document.addEventListener("tabdeck:state", onState);
+  box._cleanup = () => document.removeEventListener("tabdeck:state", onState);
+  render(null);
+  return [box];
+}
+
 function hotkeyRow(obj, key, label) {
   const a = { keys: obj[key] || "" };
-  return h("div", { class: "field" }, h("label", { text: label }),
-    hotkeyInput(a, { k: "keys", ph: "z. B. ctrl+shift+m" }, () => { obj[key] = a.keys; }));
+  return h("div", { class: "field card" }, h("label", { text: label }),
+    hotkeyInput(a, { k: "keys", ph: "z. B. f14" }, () => { obj[key] = a.keys; }, { send: true }));
 }
 
 function buildObsPage(cfg) {

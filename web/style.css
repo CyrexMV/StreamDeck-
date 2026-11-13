@@ -264,3 +264,19 @@ input[type=color] { width: 44px; height: 44px; border: 1px solid var(--line); bo
 }
 .toast.error { border-left-color: var(--danger); }
 .toast.ok { border-left-color: var(--ok); }
+
+/* ---------------------------------------------------------- Tastenauswahl */
+.row.wrap { flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line); background: var(--panel2); color: var(--fg); border-radius: 10px;
+  padding: 9px 14px; font-weight: 600; font-size: 15px; min-height: 44px;
+}
+.chip.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+.hotkey .plus { color: var(--muted); font-weight: 700; padding: 0 2px; }
+.hotkey .key-select { flex: 1; min-width: 160px; width: auto; }
+.field.card { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.field.card input[type=text], .field.card select, .field.card .chip { background: var(--panel); }
+.steps { margin: 0 0 12px; padding-left: 20px; line-height: 1.55; font-size: 14px; color: var(--fg); }
+.steps li { margin-bottom: 4px; }
+.copy-row { display: flex; gap: 8px; align-items: center; }
+.copy-row code { flex: 1; padding: 10px 12px !important; font-size: 13px !important; word-break: break-all; -webkit-user-select: all; user-select: all; }
