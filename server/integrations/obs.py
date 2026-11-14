@@ -589,7 +589,9 @@ class OBSClient:
             exists = True
         except OBSError:
             current, exists = {}, False
+        self._sound_file = name
         if not exists:
+            # Neue Quelle mit Datei: OBS spielt sie beim Anlegen von selbst ab
             await self.request("CreateInput", {"sceneName": scene, "inputName": SOUND_INPUT, "inputKind": "ffmpeg_source",
                                                "inputSettings": settings, "sceneItemEnabled": True})
             try:  # selbst mithören (OBS → Einstellungen → Audio → Monitoring-Gerät)
@@ -597,23 +599,32 @@ class OBSClient:
                                                                "monitorType": "OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT"})
             except OBSError:
                 pass
-            self._sound_loaded = path
+            await self._apply_sound_gain(volume)
+            autostart = True
         else:
             await self._ensure_sound_visible(scene)
-            if str(current.get("local_file", "")).replace("\\", "/") != path or not current.get("is_local_file", True):
+            # Fader und Stummschaltung von „TabDeck Sounds“ gehören dir – nicht anfassen.
+            # Die Lautstärke pro Taste wirkt zusätzlich über einen Verstärkungs-Filter (vor dem Start setzen).
+            await self._apply_sound_gain(volume)
+            autostart = str(current.get("local_file", "")).replace("\\", "/") != path or not current.get("is_local_file", True)
+            if autostart:
+                # Neue Datei: OBS startet sie beim Setzen von selbst – KEIN zusätzliches „Neu starten“,
+                # sonst spielt der Anfang kurz an, bricht ab und beginnt erneut.
                 await self.request("SetInputSettings", {"inputName": SOUND_INPUT, "inputSettings": settings, "overlay": True})
-                await asyncio.sleep(0.2)  # OBS lädt die neue Datei
-            self._sound_loaded = path
-        # Fader und Stummschaltung von „TabDeck Sounds“ gehören dir – nicht anfassen.
-        # Die Lautstärke pro Taste wirkt zusätzlich über einen Verstärkungs-Filter.
-        await self._apply_sound_gain(volume)
-        self._sound_file = name
-        await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
-        status = await self._wait_media_playing(2.5)
-        if status != "OBS_MEDIA_STATE_PLAYING":
-            # noch einmal anstoßen – z. B. wenn OBS die Datei gerade erst geladen hat
+        self._sound_loaded = path
+        if autostart:
+            status = await self._wait_media_playing(4.0)
+            if status not in ("OBS_MEDIA_STATE_PLAYING", "OBS_MEDIA_STATE_ERROR") and not self._saw_playing:
+                # OBS hat nicht von selbst angefangen → jetzt anstoßen
+                await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
+                status = await self._wait_media_playing(3.0)
+        else:
+            # Gleiche Datei wie zuletzt: von vorn starten
             await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
-            status = await self._wait_media_playing(2.5)
+            status = await self._wait_media_playing(3.0)
+            if status not in ("OBS_MEDIA_STATE_PLAYING", "OBS_MEDIA_STATE_ERROR") and not self._saw_playing:
+                await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
+                status = await self._wait_media_playing(3.0)
         if status == "OBS_MEDIA_STATE_PLAYING" or status == "OBS_MEDIA_STATE_ENDED" and self._saw_playing:
             self.state["sound_playing"] = name if status == "OBS_MEDIA_STATE_PLAYING" else None
             self._notify()
