@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -48,7 +49,7 @@ class SystemController:
                     os.startfile(target, cwd=cwd)  # type: ignore[attr-defined]
                 else:
                     os.startfile(target)  # type: ignore[attr-defined]
-            elif "://" in target or target.endswith(":"):
+            elif re.match(r"^[a-z][a-z0-9+.-]+:", target, re.I):  # Links wie https://, spotify:track:…
                 webbrowser.open(target)
             else:
                 opener = "open" if sys.platform == "darwin" else "xdg-open"

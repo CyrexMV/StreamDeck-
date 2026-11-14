@@ -10,6 +10,7 @@ import hmac
 import io
 import json
 import logging
+import os
 import re
 import socket
 import time
@@ -270,13 +271,13 @@ class DeckServer:
         handle = f"{conn_id}:{page}:{slot}"
 
         async def run() -> None:
-            ok, error = True, None
+            ok, error, info = True, None, None
             try:
                 if button.get("toggle"):
                     key = f"{page}:{slot}"
                     self.state["toggles"][key] = not self.state["toggles"].get(key, False)
                     await self.broadcast_state("toggles")
-                await self.runner.press(handle, button)
+                info = await self.runner.press(handle, button)
             except ActionError as exc:
                 ok, error = False, str(exc)
             except Exception as exc:
@@ -285,7 +286,7 @@ class DeckServer:
             if error:
                 log.warning("Taste „%s“: %s", button.get("label") or slot, error)
             try:
-                await ws.send_json({"type": "result", "page": page, "slot": slot, "ok": ok, "error": error})
+                await ws.send_json({"type": "result", "page": page, "slot": slot, "ok": ok, "error": error, "info": info})
             except Exception:
                 pass
 
@@ -339,8 +340,11 @@ class DeckServer:
         if method == "upload_icon":
             return {"url": self._save_icon(p.get("data", ""))}
         if method == "test_action":
-            await self.runner.run(p.get("action") or {})
-            return True
+            return {"info": await self.runner.run(p.get("action") or {})}
+        if method == "spotify_lookup":
+            return await self.spotify.lookup(p.get("link", ""))
+        if method == "icon_from_url":
+            return {"url": await self._icon_from_url(p.get("url", ""))}
         if method == "audio_apps":
             snap = await self.audio.snapshot()
             return sorted({a["name"] for a in (snap.get("apps") or {}).values()}, key=str.lower)
@@ -412,6 +416,30 @@ class DeckServer:
         if not path.exists():
             path.write_bytes(raw)
         return f"/icons/{name}"
+
+    async def _icon_from_url(self, url: str) -> str:
+        """Cover von Spotify als Tastenbild speichern (nur Spotify-Bildserver erlaubt)."""
+        from urllib.parse import urlparse
+
+        import aiohttp
+
+        host = urlparse(url).hostname or ""
+        test_host = urlparse(os.environ.get("TABDECK_SPOTIFY_WEB", "")).hostname
+        allowed = url.startswith("https://") and (host.endswith(".scdn.co") or host.endswith(".spotifycdn.com"))
+        if not allowed and not (test_host and host == test_host):
+            raise ActionError("Nur Bilder von Spotify können übernommen werden")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        raise ActionError("Cover konnte nicht geladen werden")
+                    mime = (resp.content_type or "image/jpeg").split(";")[0]
+                    data = await resp.content.read(MAX_ICON_BYTES + 1)
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            raise ActionError("Cover konnte nicht geladen werden (Internet?)") from None
+        if mime not in ICON_TYPES:
+            mime = "image/jpeg"
+        return self._save_icon(f"data:{mime};base64,{base64.b64encode(data).decode()}")
 
     def _cleanup_icons(self) -> None:
         """Nicht mehr benutzte hochgeladene Bilder löschen."""

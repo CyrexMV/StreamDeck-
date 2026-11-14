@@ -131,9 +131,16 @@ const ACTIONS = {
       { k: "op", label: "Funktion", type: "select", options: [["play_pause", "Play/Pause"], ["next", "Nächster Titel"], ["previous", "Vorheriger Titel"],
         ["volume_up", "Spotify lauter (in der App)"], ["volume_down", "Spotify leiser (in der App)"], ["volume_set", "Spotify-Lautstärke auf Wert setzen"],
         ["mute_toggle", "Spotify stumm an/aus (in der App)"], ["like", "Titel liken / entfernen (❤️)"],
+        ["play_link", "Song / Album / Playlist abspielen (Spotify-Link)"],
         ["shuffle", "Zufallswiedergabe an/aus"], ["repeat", "Wiederholen umschalten"]] },
       { k: "step", label: "Schritt in %", type: "number", min: 1, max: 100, show: (a) => a.op === "volume_up" || a.op === "volume_down" },
       { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "volume_set" },
+      { k: "link", label: "Spotify-Link", type: "spotifylink", show: (a) => a.op === "play_link",
+        help: "In Spotify beim Song (oder Album/Playlist) auf „⋯ → Teilen → Link kopieren“ tippen und hier einfügen." },
+      { k: "enqueue", label: "Nur zur Warteschlange hinzufügen (statt sofort abspielen)", type: "checkbox", show: (a) => a.op === "play_link" },
+      { k: "shuffle", label: "Album/Playlist zufällig abspielen", type: "checkbox", show: (a) => a.op === "play_link" && !a.enqueue },
+      { k: "_hint2", type: "info", show: (a) => a.op === "play_link",
+        html: "Spielt über dein Spotify-Konto ab – dafür Spotify unter ⚙️ → Spotify verbinden (Spotify verlangt Premium). Ohne wird der Song in der Spotify-App am PC geöffnet." },
       { k: "_hint", type: "info", show: (a) => ["volume_up", "volume_down", "volume_set", "mute_toggle", "like"].includes(a.op),
         html: "Ändert die Lautstärke <b>direkt in der Spotify-App</b>. Dafür einmalig unter ⚙️ Einstellungen → Spotify verbinden (Spotify Premium nötig)." },
     ],
@@ -210,6 +217,7 @@ const TEMPLATES = [
     T("Spotify lauter", "🔊", C.spotify, [{ type: "spotify", op: "volume_up", step: 10 }]),
     T("Spotify stumm", "🔈", C.spotify, [{ type: "spotify", op: "mute_toggle" }], { symbol: "speaker", active: { label: "Spotify aus" } }),
     T("Gefällt mir", "🤍", C.spotify, [{ type: "spotify", op: "like" }], { active: ACT("💚", "Gespeichert", "#14833b") }),
+    T("Song abspielen", "🎵", C.spotify, [{ type: "spotify", op: "play_link", link: "" }], { app_icon: "badge" }),
     T("Spotify öffnen", "🎧", C.spotify, [{ type: "open", target: "spotify:" }], { app_icon: "main" }),
     T("Spotify", "🎵", C.dark, [{ type: "page", page: "spotify" }], { app: "spotify", app_icon: "main" }),
   ] },
@@ -359,6 +367,7 @@ function onMessage(msg) {
       document.dispatchEvent(new CustomEvent("tabdeck:state", { detail: Object.keys(msg.state || {}) }));
       break;
     case "result":
+      if (msg.ok && msg.info) toast(msg.info);
       if (!msg.ok) {
         toast(msg.error || "Aktion fehlgeschlagen", "error");
         if (msg.page === App.pageId) {
@@ -580,6 +589,12 @@ function actionActive(a) {
       if (a.op === "play_pause") return !!m.spotify_playing;
       if (a.op === "shuffle") return !!m.spotify_shuffle;
       if (a.op === "like") return !!st.spotify?.liked;
+      if (a.op === "play_link") {
+        const link = parseSpotifyLink(a.link);
+        const sp = st.spotify || {};
+        if (!link || !sp.playing) return false;
+        return ["track", "episode"].includes(link.kind) ? sp.track_id === link.id : sp.context === `spotify:${link.kind}:${link.id}`;
+      }
       if (a.op === "mute_toggle") return st.spotify?.volume === 0;
       return null;
     case "media":
@@ -1712,6 +1727,62 @@ function sendButton(getKeys) {
   return btn;
 }
 
+/* ------------------------------------------------------ Spotify-Links */
+const SPOTIFY_LINK_RE = /(?:open\.spotify\.com\/(?:intl-[a-z]{2}(?:-[a-z]{2})?\/)?(?:embed\/)?|spotify:)(track|album|playlist|artist|episode|show)[/:]([A-Za-z0-9]{10,40})/i;
+function parseSpotifyLink(text) {
+  const m = SPOTIFY_LINK_RE.exec(text || "");
+  return m ? { kind: m[1].toLowerCase(), id: m[2] } : null;
+}
+const spotifyLookupCache = new Map();
+
+function spotifyLinkField(action, f, onChange) {
+  const preview = h("div", { class: "sp-preview" });
+  let timer = null;
+  const load = async () => {
+    const link = action[f.k];
+    if (!link) { fill(preview); return; }
+    let info = spotifyLookupCache.get(link);
+    if (!info) {
+      fill(preview, h("span", { class: "help", text: "Suche bei Spotify …" }));
+      try {
+        info = await rpc("spotify_lookup", { link });
+        spotifyLookupCache.set(link, info);
+      } catch (err) {
+        fill(preview, h("span", { class: "help", style: { color: "#ff7b7f" }, text: err.message }));
+        return;
+      }
+    }
+    const ctx = App.editorCtx;
+    fill(preview,
+      info.image ? h("img", { src: info.image, alt: "" }) : h("span", { class: "sp-noimg", text: "🎵" }),
+      h("div", { class: "sp-info" }, h("b", { text: info.title || "Titel nicht gefunden" }), h("span", { text: info.kind_name })),
+      h("div", { class: "sp-btns" },
+        info.image && ctx ? h("button", { class: "btn small", text: "Cover als Bild", onclick: async () => {
+          try {
+            const r = await rpc("icon_from_url", { url: info.image });
+            ctx.draft.image = r.url;
+            ctx.draft.image_fill = true;
+            ctx.render();
+          } catch (err) { toast(err.message, "error"); }
+        } }) : null,
+        info.title && ctx ? h("button", { class: "btn small", text: "Titel als Beschriftung", onclick: () => { ctx.draft.label = info.title; ctx.render(); } }) : null));
+  };
+  const input = h("input", { type: "text", value: action[f.k] || "", placeholder: "https://open.spotify.com/track/…", spellcheck: "false", autocapitalize: "off",
+    oninput: (e) => { action[f.k] = e.target.value.trim(); onChange(); clearTimeout(timer); timer = setTimeout(load, 500); } });
+  const canPaste = window.isSecureContext && navigator.clipboard?.readText;
+  const wrap = h("div", {},
+    h("div", { class: "row" }, input,
+      canPaste ? h("button", { class: "btn small", text: "Einfügen", onclick: async () => {
+        try {
+          const t = (await navigator.clipboard.readText()).trim();
+          input.value = t; action[f.k] = t; onChange(); load();
+        } catch { toast("Bitte lange in das Feld tippen und „Einfügen“ wählen", "error"); }
+      } }) : null),
+    preview);
+  if (action[f.k]) load();
+  return wrap;
+}
+
 function fieldEl(action, f, rerender, onChange) {
   const val = action[f.k];
   let input;
@@ -1727,7 +1798,7 @@ function fieldEl(action, f, rerender, onChange) {
         App.config.pages.map((p) => h("option", { value: p.id, text: p.name })));
       break;
     case "checkbox":
-      return h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!val, onchange: (e) => { action[f.k] = e.target.checked; onChange(); } }), f.label);
+      return h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!val, onchange: (e) => { action[f.k] = e.target.checked; onChange(); rerender && rerender(); } }), f.label);
     case "number":
       input = h("input", { type: "number", value: val ?? "", min: f.min, max: f.max, step: f.step || 1, inputmode: "numeric",
         oninput: (e) => { action[f.k] = e.target.value === "" ? "" : Number(e.target.value); onChange(); } });
@@ -1737,6 +1808,9 @@ function fieldEl(action, f, rerender, onChange) {
       break;
     case "hotkey":
       input = hotkeyInput(action, f, onChange);
+      break;
+    case "spotifylink":
+      input = spotifyLinkField(action, f, onChange);
       break;
     case "datalist": {
       const id = "dl-" + uid();
@@ -1843,6 +1917,7 @@ function openEditor(slot) {
       h("button", { class: "btn primary", text: "Speichern", onclick: save }),
     ],
   });
+  App.editorCtx = { draft, render };
   render();
   const onState = (e) => { if ((e.detail || []).includes("appicons")) rerenderWhenIdle(body, render); else updatePreview(); };
   document.addEventListener("tabdeck:state", onState);
@@ -1960,7 +2035,7 @@ function actionsSection(draft, render, updatePreview) {
         h("div", { class: "action-head" },
           actionTypeSelect(a, (type) => { list[i] = { type, ...clone(ACTIONS[type].defaults) }; render(); }),
           !CLIENT_ACTIONS.has(a.type) ? h("button", { class: "icon-btn", html: icon("play"), title: "Testen", onclick: async () => {
-            try { await rpc("test_action", { action: a }); toast("Ausgeführt ✓", "ok"); } catch (err) { toast(err.message, "error"); }
+            try { const r = await rpc("test_action", { action: a }); toast(r?.info || "Ausgeführt ✓", r?.info ? "" : "ok"); } catch (err) { toast(err.message, "error"); }
           } }) : null,
           h("button", { class: "icon-btn", html: icon("up"), title: "Nach oben", disabled: i === 0, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; render(); } }),
           h("button", { class: "icon-btn", html: icon("down"), title: "Nach unten", disabled: i === list.length - 1, onclick: () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; render(); } }),

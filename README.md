@@ -17,7 +17,7 @@ Programme, Tastenkombinationen und vieles mehr per Fingertipp.
 |---|---|
 | **OBS Studio** | Szene wechseln, Aufnahme/Stream starten und stoppen, Aufnahme pausieren, Audioquellen stumm schalten, Quellen ein- und ausblenden, virtuelle Kamera, Replay-Puffer und Replay speichern, Studio-Modus und Übergang, Screenshot. **Live-Status** auf den Tasten, dazu eine automatisch erzeugte Seite mit allen Szenen. |
 | **Discord** | Mikro stumm, Ton aus („taub“), **Push-to-Talk** (solange du die Taste hältst). Tasten direkt am Tablet festlegen und per „An PC senden“ in Discord einlernen. |
-| **Spotify** | Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, **Lautstärke direkt in der Spotify-App**, „Gefällt mir“, **„Läuft gerade“ mit Cover**, **aktueller Songtitel als Lauftext** auf Play/Pause-, Öffnen- und Fader-Kacheln (pro Taste im Editor unter „Songtitel anzeigen“ einstellbar) |
+| **Spotify** | **Song/Album/Playlist per Spotify-Link abspielen** (mit Cover als Tastenbild), Play/Pause, weiter/zurück, Zufallswiedergabe, Wiederholen, **Lautstärke direkt in der Spotify-App**, „Gefällt mir“, **„Läuft gerade“ mit Cover**, **aktueller Songtitel als Lauftext** auf Play/Pause-, Öffnen- und Fader-Kacheln (pro Taste im Editor unter „Songtitel anzeigen“ einstellbar) |
 | **Ton** | **Schiebefader** für alles, was Ton abspielt: eigene Seite **„Mixer“** (zeigt automatisch PC, Mikrofon, Spotify, Discord, Browser, Spiele … und OBS-Audioquellen) sowie Fader-Kacheln für jede Seite. Dazu PC-Lautstärke ±/stumm, Lautstärke pro Programm, Windows-Mikrofon stumm. |
 | **Allgemein** | Beliebige Tastenkombinationen (auch gehalten), Text schreiben, Programme, Dateien und Websites öffnen, Befehle ausführen, PC sperren, Monitor aus, Energiesparen, Neustart, Herunterfahren (mit Sicherheitsabfrage) |
 | **Mehrfach-Aktionen** | Eine Taste kann mehrere Aktionen nacheinander ausführen, mit Wartezeit dazwischen. |
@@ -131,6 +131,13 @@ Weitere nützliche Ziele für „Öffnen“: `spotify:`, `discord://`, `steam://
 - auf eine andere Kachel: Beide tauschen den Platz.
 - auf einen **Seiten-Reiter** oben: Loslassen legt sie ins erste freie Feld dieser Seite. Kurz darüber **halten**
   öffnet die Seite, dann kannst du sie dort genau platzieren.
+
+**Song per Link abspielen:** Neue Taste → Vorlage **„Song abspielen“** (oder Aktion *Spotify → Song / Album / Playlist
+abspielen*). In Spotify beim Song auf **„⋯ → Teilen → Link kopieren“** tippen und den Link einfügen. TabDeck zeigt Titel
+und Cover an. Mit **„Cover als Bild“** und **„Titel als Beschriftung“** wird die Taste zur Album-Kachel. Beim Drücken spielt
+Spotify den Song über dein Konto ab (Spotify verlangt dafür Premium und die Verbindung unter ⚙️ → Spotify). Ist Spotify am
+PC geschlossen, startet TabDeck es. Optional „Nur zur Warteschlange hinzufügen“ oder Album/Playlist „zufällig“. Die Taste
+leuchtet, solange der Song bzw. die Playlist läuft. Ohne Premium öffnet TabDeck den Link in der Spotify-App.
 
 **Stumm-Anzeige wie in Discord:** Mikrofon-, Kopfhörer- und Lautsprecher-Tasten zeigen ein weißes Symbol. Ist stumm
 geschaltet, wird es **rot und durchgestrichen** (bei Discord „taub“ auch das Mikrofon, wie in Discord selbst). Im Editor

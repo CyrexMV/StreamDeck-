@@ -466,3 +466,12 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .choice-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .src-chip.on { border-color: var(--acc); }
 .src-chip.off { opacity: .5; text-decoration: line-through; }
+
+/* ------------------------------------------------- Spotify-Link-Vorschau */
+.sp-preview { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.sp-preview:empty { display: none; }
+.sp-preview img, .sp-noimg { width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex: none; display: grid; place-items: center; font-size: 30px; background: var(--panel3); }
+.sp-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sp-info b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-info span { font-size: 13px; color: var(--muted); }
+.sp-btns { display: flex; gap: 6px; flex-wrap: wrap; }

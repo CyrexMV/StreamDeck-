@@ -12,6 +12,7 @@ import base64
 import hashlib
 import logging
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -21,9 +22,31 @@ import aiohttp
 
 from ..errors import ActionError
 
+
+class NoDevice(ActionError):
+    pass
+
+
+class PremiumRequired(ActionError):
+    pass
+
+
+LINK_RE = re.compile(
+    r"(?:open\.spotify\.com/(?:intl-[a-z]{2}(?:-[a-z]{2})?/)?(?:embed/)?|spotify:)"
+    r"(track|album|playlist|artist|episode|show)[/:]([A-Za-z0-9]{10,40})", re.I)
+PLAYABLE_SINGLE = ("track", "episode")
+KIND_NAMES = {"track": "Song", "album": "Album", "playlist": "Playlist", "artist": "Künstler", "episode": "Podcast-Folge", "show": "Podcast"}
+
+
+def parse_link(text: str) -> tuple[str, str] | None:
+    """„https://open.spotify.com/intl-de/track/ID?si=…“ oder „spotify:track:ID“ → ("track", "ID")"""
+    m = LINK_RE.search(text or "")
+    return (m.group(1).lower(), m.group(2)) if m else None
+
 log = logging.getLogger("tabdeck.spotify")
 
 ACCOUNTS = os.environ.get("TABDECK_SPOTIFY_ACCOUNTS", "https://accounts.spotify.com")
+WEB = os.environ.get("TABDECK_SPOTIFY_WEB", "https://open.spotify.com")
 API = os.environ.get("TABDECK_SPOTIFY_API", "https://api.spotify.com/v1")
 SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing user-library-read user-library-modify"
 
@@ -137,13 +160,13 @@ class SpotifyAPI:
         return self._s["access_token"]
 
     # ------------------------------------------------------------------ API
-    async def api(self, method: str, path: str, params: dict | None = None, _retry: bool = True):
+    async def api(self, method: str, path: str, params: dict | None = None, _retry: bool = True, body: dict | None = None):
         token = await self._access_token()
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.request(
                     method, API + path, params=params, headers={"Authorization": f"Bearer {token}"},
-                    timeout=aiohttp.ClientTimeout(total=10),
+                    json=body, timeout=aiohttp.ClientTimeout(total=10),
                 ) as resp:
                     text = await resp.text()
                     status = resp.status
@@ -151,7 +174,7 @@ class SpotifyAPI:
             raise ActionError("Spotify ist gerade nicht erreichbar (Internet?)") from None
         if status == 401 and _retry:
             self._s["access_token"] = ""
-            return await self.api(method, path, params, _retry=False)
+            return await self.api(method, path, params, _retry=False, body=body)
         if status in (200, 201) and text:
             import json
 
@@ -170,9 +193,9 @@ class SpotifyAPI:
         except Exception:
             pass
         if status == 403 and (reason == "PREMIUM_REQUIRED" or "premium" in message.lower()):
-            raise ActionError("Für diese Funktion verlangt Spotify ein Premium-Abo")
+            raise PremiumRequired("Für diese Funktion verlangt Spotify ein Premium-Abo")
         if status == 404 or reason == "NO_ACTIVE_DEVICE":
-            raise ActionError("Kein aktives Spotify-Gerät – starte die Wiedergabe einmal in Spotify")
+            raise NoDevice("Kein aktives Spotify-Gerät – starte die Wiedergabe einmal in Spotify")
         if status == 429:
             raise ActionError("Spotify: zu viele Anfragen – kurz warten")
         if status == 403 and "volume" in message.lower():
@@ -200,6 +223,7 @@ class SpotifyAPI:
             connected=True, error=None, device=device.get("name"),
             volume=device.get("volume_percent") if device.get("supports_volume", True) else None,
             track_id=item.get("id"),
+            context=((player or {}).get("context") or {}).get("uri"),
             title=item.get("name") or None, artist=artists or None,
             cover=images[0]["url"] if images else None, playing=bool((player or {}).get("is_playing")),
         )
@@ -295,3 +319,86 @@ class SpotifyAPI:
             await self.api("PUT", "/me/player/repeat", {"state": nxt})
         else:
             raise ActionError(f"Unbekannte Spotify-Aktion: {op}")
+
+    # ------------------------------------------------------- Links abspielen
+    @staticmethod
+    async def resolve_link(text: str) -> tuple[str, str]:
+        found = parse_link(text)
+        if found:
+            return found
+        url = (text or "").strip()
+        if re.match(r"^https://(spotify\.link|spoti\.fi)/", url):
+            # Kurzlinks aus der Spotify-App auflösen
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        found = parse_link(str(resp.url)) or parse_link(await resp.text())
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                raise ActionError("Der Spotify-Kurzlink konnte nicht geöffnet werden (Internet?)") from None
+            if found:
+                return found
+        raise ActionError("Das ist kein Spotify-Link. In Spotify: „Teilen → Link kopieren“ und hier einfügen.")
+
+    @staticmethod
+    async def lookup(text: str) -> dict:
+        """Titel und Cover zu einem Link – über Spotifys öffentliche oEmbed-Schnittstelle (ohne Anmeldung)."""
+        kind, item_id = await SpotifyAPI.resolve_link(text)
+        info = {"kind": kind, "kind_name": KIND_NAMES.get(kind, kind), "id": item_id, "uri": f"spotify:{kind}:{item_id}",
+                "url": f"https://open.spotify.com/{kind}/{item_id}", "title": None, "image": None}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{WEB}/oembed", params={"url": info["url"]}, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        info["title"] = data.get("title")
+                        info["image"] = data.get("thumbnail_url")
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+            pass
+        return info
+
+    async def _devices(self) -> list:
+        return ((await self.api("GET", "/me/player/devices")) or {}).get("devices") or []
+
+    async def _with_device(self, method: str, path: str, params: dict | None = None, body: dict | None = None,
+                           start_app=None) -> None:
+        """Befehl senden; ist kein Gerät aktiv, den PC (oder ein anderes Gerät) wählen – notfalls Spotify starten."""
+        try:
+            await self.api(method, path, params, body=body)
+            return
+        except NoDevice:
+            pass
+        devices = await self._devices()
+        if not devices and start_app is not None:
+            await start_app()
+            for _ in range(15):
+                await asyncio.sleep(1)
+                devices = await self._devices()
+                if devices:
+                    break
+        if not devices:
+            raise NoDevice("Spotify läuft auf keinem Gerät – bitte Spotify am PC öffnen")
+        device = next((d for d in devices if d.get("is_active")), None) \
+            or next((d for d in devices if d.get("type") == "Computer"), None) or devices[0]
+        await self.api(method, path, {**(params or {}), "device_id": device["id"]}, body=body)
+
+    async def play_link(self, text: str, enqueue: bool = False, shuffle: bool = False, start_app=None) -> None:
+        if not self._s.get("refresh_token"):
+            raise ActionError("Spotify ist nicht verbunden – Tablet: ⚙️ Einstellungen → Spotify")
+        if self._s.get("premium") is False:
+            raise PremiumRequired("Direktes Abspielen erlaubt Spotify nur mit Premium")
+        kind, item_id = await self.resolve_link(text)
+        uri = f"spotify:{kind}:{item_id}"
+        if enqueue:
+            if kind not in PLAYABLE_SINGLE:
+                raise ActionError("Zur Warteschlange hinzufügen geht nur mit einzelnen Songs oder Podcast-Folgen")
+            await self._with_device("POST", "/me/player/queue", {"uri": uri}, start_app=start_app)
+        else:
+            body = {"uris": [uri]} if kind in PLAYABLE_SINGLE else {"context_uri": uri}
+            await self._with_device("PUT", "/me/player/play", body=body, start_app=start_app)
+            if shuffle and kind not in PLAYABLE_SINGLE:
+                try:
+                    await self.api("PUT", "/me/player/shuffle", {"state": "true"})
+                except ActionError:
+                    pass
+        await asyncio.sleep(0.8)
+        await self.poll()

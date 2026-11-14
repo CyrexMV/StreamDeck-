@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from .errors import ActionError
+from .integrations.spotify_api import PremiumRequired
 
 if TYPE_CHECKING:
     from .app import DeckServer
@@ -32,8 +33,9 @@ class ActionRunner:
             raise ActionError(f"Für Discord „{op}“ ist keine Tastenkombination eingestellt (Einstellungen → Discord)")
         return keys
 
-    async def press(self, handle: str, button: dict) -> None:
-        """Taste wurde gedrückt: alle Aktionen nacheinander ausführen."""
+    async def press(self, handle: str, button: dict) -> str | None:
+        """Taste wurde gedrückt: alle Aktionen nacheinander ausführen. Liefert ggf. einen Hinweis fürs Tablet."""
+        info = None
         for index, action in enumerate(button.get("actions") or []):
             t = action.get("type")
             if t in CLIENT_ONLY:
@@ -42,7 +44,8 @@ class ActionRunner:
                 keys = action.get("keys") if t == "hotkey" else self._discord_keys("ptt")
                 await asyncio.to_thread(self.s.keyboard.hold, f"{handle}#{index}", keys)
                 continue
-            await self.run(action)
+            info = await self.run(action) or info
+        return info
 
     async def release(self, handle: str, button: dict) -> None:
         """Taste wurde losgelassen: gehaltene Tasten wieder loslassen."""
@@ -50,7 +53,7 @@ class ActionRunner:
             if self._is_hold(action):
                 await asyncio.to_thread(self.s.keyboard.release, f"{handle}#{index}")
 
-    async def run(self, a: dict) -> None:
+    async def run(self, a: dict) -> str | None:
         t = a.get("type")
         kb = self.s.keyboard
         if t == "hotkey":
@@ -60,7 +63,7 @@ class ActionRunner:
         elif t == "media":
             await self.s.media.control(a.get("op", "play_pause"), "any")
         elif t == "spotify":
-            await self._spotify(a)
+            return await self._spotify(a)
         elif t == "volume":
             await self._volume(a)
         elif t == "obs":
@@ -83,9 +86,11 @@ class ActionRunner:
         else:
             raise ActionError(f"Unbekannter Aktionstyp: {t}")
 
-    async def _spotify(self, a: dict) -> None:
+    async def _spotify(self, a: dict) -> str | None:
         op = a.get("op", "play_pause")
         sp = self.s.spotify
+        if op == "play_link":
+            return await self._spotify_link(a)
         if op in ("volume_up", "volume_down", "volume_set", "mute_toggle"):
             # Echte Lautstärke in der Spotify-App (nicht Windows-Mixer)
             await sp.volume(op, a.get("step", 50 if op == "volume_set" else 10))
@@ -99,6 +104,27 @@ class ActionRunner:
             if not sp.state.get("connected"):
                 raise
             await sp.transport(op)  # Ersatzweg über die Spotify Web API
+
+    async def _spotify_link(self, a: dict) -> str | None:
+        sp = self.s.spotify
+        link = a.get("link", "")
+        kind, item_id = await sp.resolve_link(link)
+
+        async def start_app() -> None:
+            await asyncio.to_thread(self.s.system.open, "spotify:")
+
+        reason = None
+        if not sp.state.get("connected"):
+            reason = "Für direktes Abspielen Spotify verbinden (⚙️ → Spotify)."
+        else:
+            try:
+                await sp.play_link(link, bool(a.get("enqueue")), bool(a.get("shuffle")), start_app=start_app)
+                return None
+            except PremiumRequired:
+                reason = "Direktes Abspielen erlaubt Spotify nur mit Premium."
+        # Ersatzweg: in der Spotify-App am PC öffnen
+        await asyncio.to_thread(self.s.system.open, f"spotify:{kind}:{item_id}")
+        return f"In Spotify geöffnet – dort auf Play tippen. {reason}"
 
     async def _volume(self, a: dict) -> None:
         target = a.get("target", "master")
