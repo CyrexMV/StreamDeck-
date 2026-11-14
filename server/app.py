@@ -28,6 +28,7 @@ from .integrations.audio import AudioController
 from .integrations.keyboard import Keyboard
 from .integrations.media import MediaController
 from .integrations.obs import OBSClient
+from .integrations.sounds import SoundPlayer
 from .integrations.spotify_api import SpotifyAPI
 from .integrations.system import SystemController
 
@@ -69,6 +70,7 @@ class DeckServer:
         self.obs = OBSClient(self._on_obs_change)
         self.spotify = SpotifyAPI(store.secrets["spotify"], store.save, self._on_spotify_change)
         self.appicons = AppIcons(DATA_DIR / "appicons")
+        self.sounds = SoundPlayer(DATA_DIR / "sounds", self._on_sounds_change)
         self._wanted_icons: dict[str, str | None] = {}
         self.runner = ActionRunner(self)
         self.state: dict = {
@@ -80,6 +82,7 @@ class DeckServer:
             "discord": {"mute": False, "deafen": False},
             "toggles": {},
             "appicons": self.appicons.cached(),
+            "sounds": {"playing": []},
         }
         self._press_tasks: dict[str, asyncio.Task] = {}
         self._auth_failures: dict[str, list[float]] = {}
@@ -100,6 +103,8 @@ class DeckServer:
         app.router.add_static("/icons/", ICON_DIR)
         (DATA_DIR / "appicons").mkdir(parents=True, exist_ok=True)
         app.router.add_static("/appicons/", DATA_DIR / "appicons")
+        (DATA_DIR / "sounds").mkdir(parents=True, exist_ok=True)
+        app.router.add_static("/sounds/", DATA_DIR / "sounds")
         app.on_startup.append(self._startup)
         app.on_shutdown.append(self._shutdown)
         app.middlewares.append(self._no_cache)
@@ -365,6 +370,22 @@ class DeckServer:
                 await self.broadcast_state("appicons")
                 raise ActionError("Kein Programm-Symbol gefunden – ist das Programm installiert? Tipp: Programm einmal starten.")
             return self.state["appicons"][key]
+        if method == "sounds_list":
+            return {"folder": str(self.sounds.folder), "files": self.sounds.list()}
+        if method == "sound_upload":
+            data = p.get("data", "")
+            data = data.split(",", 1)[1] if data.startswith("data:") else data
+            try:
+                raw = base64.b64decode(data)
+            except (binascii.Error, ValueError):
+                raise ActionError("Datei konnte nicht gelesen werden") from None
+            return {"name": self.sounds.save_upload(p.get("name", ""), raw), "files": self.sounds.list()}
+        if method == "sounds_open_folder":
+            await asyncio.to_thread(self.system.open, str(self.sounds.folder))
+            return True
+        if method == "sound_stop":
+            self.sounds.stop()
+            return True
         if method == "set_volume":
             await self._set_channel(p, float(p.get("value", 0)))
             return True
@@ -504,6 +525,12 @@ class DeckServer:
             await self.refresh_audio()
 
         self._audio_refresh = asyncio.create_task(later())
+
+    def _on_sounds_change(self) -> None:
+        playing = self.sounds.playing_files
+        if playing != self.state["sounds"].get("playing"):
+            self.state["sounds"] = {"playing": playing}
+            asyncio.create_task(self.broadcast_state("sounds"))
 
     async def _on_spotify_change(self) -> None:
         self.state["spotify"] = self.spotify.state

@@ -156,6 +156,18 @@ const ACTIONS = {
       { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "set" },
     ],
   },
+  sound: {
+    name: "Sound abspielen (Soundboard)", group: "Medien & Ton", defaults: { op: "play", file: "", volume: 100, mode: "restart", target: "pc" },
+    fields: [
+      { k: "op", label: "Funktion", type: "select", options: [["play", "Sound abspielen"], ["stop_all", "Alle Sounds stoppen"]] },
+      { k: "file", label: "Sound", type: "soundfile", show: (a) => a.op !== "stop_all" },
+      { k: "volume", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op !== "stop_all" },
+      { k: "target", label: "Abspielen", type: "select", show: (a) => a.op !== "stop_all",
+        options: [["pc", "Am PC (hörst du und z. B. dein Stream)"], ["tablet", "Auf dem Tablet"]] },
+      { k: "mode", label: "Erneut drücken, während er läuft", type: "select", show: (a) => a.op !== "stop_all",
+        options: [["restart", "Von vorn starten"], ["toggle", "Stoppen"], ["overlap", "Zusätzlich noch einmal abspielen"]] },
+    ],
+  },
   obs: {
     name: "OBS Studio", group: "Programme", defaults: { op: "scene", scene: "" },
     fields: [
@@ -250,6 +262,11 @@ const TEMPLATES = [
     T("Discord", "💬", C.discord, [], { widget: "fader", fader: { target: "app", app: "Discord.exe" }, size: { w: 1, h: 2 } }),
     T("Browser", "🌐", C.sys, [], { widget: "fader", fader: { target: "app", app: "chrome.exe" }, size: { w: 1, h: 2 } }),
     T("OBS-Mikro", "🎙️", C.obs, [], { widget: "fader", fader: { target: "obs", input: "Mikrofon/AUX" }, size: { w: 1, h: 2 } }),
+  ] },
+  { group: "Soundboard", items: [
+    T("Sound", "🔊", C.vol, [{ type: "sound", op: "play", file: "", volume: 100, mode: "restart", target: "pc" }], { active: { color: C.green } }),
+    T("Sound an/aus", "🎺", C.warn, [{ type: "sound", op: "play", file: "", volume: 100, mode: "toggle", target: "pc" }], { active: { color: C.green } }),
+    T("Alle Sounds stoppen", "⏹️", C.rec, [{ type: "sound", op: "stop_all" }]),
   ] },
   { group: "Anzeigen & Navigation", items: [
     T("", "🕒", C.dark, [], { widget: "clock" }),
@@ -353,6 +370,7 @@ function onMessage(msg) {
       if (!App.pageId || !getPage(App.pageId)) App.pageId = getPage(saved) ? saved : App.config.pages[0].id;
       renderAll();
       requestAppIcons();
+      loadSounds();
       break;
     }
     case "config":
@@ -599,6 +617,9 @@ function actionActive(a) {
       return null;
     case "media":
       return a.op === "play_pause" ? !!m.playing : null;
+    case "sound":
+      if (a.op === "stop_all" || !a.file) return null;
+      return a.target === "tablet" ? tabletSounds.has(a.file) : (st.sounds?.playing || []).includes(a.file);
     case "discord":
       if (a.op === "mute") return !!(st.discord?.mute || st.discord?.deafen); // taub = Mikro ist auch aus
       return a.op === "deafen" ? !!st.discord?.deafen : null;
@@ -1310,6 +1331,11 @@ async function pressStart(el) {
   if (hasServerActions || btn.toggle) {
     if (!send({ type: "down", page: page.id, slot })) toast("Keine Verbindung zum PC", "error");
   }
+  for (const a of btn.actions || []) {
+    if (a.type !== "sound") continue;
+    if (a.op === "stop_all") stopTabletSound();
+    else if (a.target === "tablet") playTabletSound(a);
+  }
   if ((btn.actions || []).some((a) => CLIENT_ACTIONS.has(a.type))) {
     pressEnd(el);
     runClientActions(btn);
@@ -1783,6 +1809,128 @@ function spotifyLinkField(action, f, onChange) {
   return wrap;
 }
 
+/* ================================================================ Sounds */
+const tabletSounds = new Map(); // Datei -> Set<Audio>
+
+async function loadSounds() {
+  try {
+    const r = await rpc("sounds_list");
+    App.soundFiles = r.files || [];
+    App.soundFolder = r.folder;
+  } catch { App.soundFiles = App.soundFiles || []; }
+  return App.soundFiles;
+}
+
+function stopTabletSound(file = null) {
+  for (const [name, set] of [...tabletSounds]) {
+    if (file && name !== file) continue;
+    set.forEach((audio) => { audio.pause(); audio.src = ""; });
+    tabletSounds.delete(name);
+  }
+  refreshFaces();
+}
+
+function playTabletSound(a) {
+  const file = a.file;
+  if (!file) { toast("Für diese Taste ist noch kein Sound ausgewählt", "error"); return; }
+  if (a.mode === "toggle" && tabletSounds.has(file)) { stopTabletSound(file); return; }
+  if (a.mode !== "overlap") stopTabletSound(file);
+  const audio = new Audio(`/sounds/${encodeURIComponent(file)}`);
+  audio.volume = Math.max(0, Math.min(1, (a.volume ?? 100) / 100));
+  const set = tabletSounds.get(file) || new Set();
+  set.add(audio);
+  tabletSounds.set(file, set);
+  const done = () => { set.delete(audio); if (!set.size && tabletSounds.get(file) === set) tabletSounds.delete(file); refreshFaces(); };
+  audio.addEventListener("ended", done);
+  audio.play().then(refreshFaces).catch(() => { done(); toast(`„${file}“ kann auf dem Tablet nicht abgespielt werden`, "error"); });
+}
+
+const soundName = (file) => String(file || "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+const fmtSize = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+
+function uploadSoundButton(onDone) {
+  const input = h("input", { type: "file", accept: "audio/*,.mp3,.wav,.wma,.m4a,.ogg,.flac", hidden: true, onchange: async (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast("Max. 5 MB beim Hochladen – größere Dateien am PC direkt in den Sound-Ordner kopieren", "error"); return; }
+    try {
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+      const r = await rpc("sound_upload", { name: file.name, data });
+      App.soundFiles = r.files;
+      toast(`„${r.name}“ hochgeladen`, "ok");
+      onDone && onDone(r.name);
+    } catch (err) { toast("Hochladen fehlgeschlagen: " + err.message, "error"); }
+  } });
+  return [input, h("button", { class: "btn small", text: "⬆ Vom Tablet hochladen", onclick: () => input.click() })];
+}
+
+function soundFileField(action, f, onChange, rerender) {
+  const files = App.soundFiles || [];
+  const known = files.some((x) => x.name === action[f.k]);
+  const select = h("select", { value: known ? action[f.k] : action[f.k] ? "__missing" : "", onchange: (e) => {
+    action[f.k] = e.target.value === "__missing" ? action[f.k] : e.target.value;
+    onChange();
+  } },
+    h("option", { value: "", text: files.length ? "– Sound wählen –" : "– Noch keine Sounds im Ordner –" }),
+    action[f.k] && !known ? h("option", { value: "__missing", text: `${action[f.k]} (nicht gefunden)` }) : null,
+    files.map((x) => h("option", { value: x.name, text: `${soundName(x.name)}  ·  ${fmtSize(x.size)}` })));
+  return h("div", {},
+    select,
+    h("div", { class: "row wrap", style: { marginTop: "8px" } },
+      h("button", { class: "btn small", text: "⟳ Liste aktualisieren", onclick: async () => { await loadSounds(); rerender(); } }),
+      h("button", { class: "btn small", text: "📂 Ordner am PC öffnen", onclick: () => rpc("sounds_open_folder").then(() => toast("Ordner am PC geöffnet")).catch((e) => toast(e.message, "error")) }),
+      uploadSoundButton((name) => { action[f.k] = name; onChange(); rerender(); })),
+    h("div", { class: "help", html: `Sounds (MP3 oder WAV) in den Ordner <code>${esc(App.soundFolder || "%APPDATA%\\TabDeck\\sounds")}</code> legen, dann „Liste aktualisieren“.` }));
+}
+
+function soundSettings(draft, show) {
+  const box = h("div");
+  const render = () => {
+    const files = App.soundFiles || [];
+    fill(box,
+      h("div", { class: "section" }, h("h3", { text: "Eigene Sounds" }),
+        h("p", { class: "help", text: "Lege MP3- oder WAV-Dateien in den Sound-Ordner auf dem PC. Danach kannst du sie auf jede Taste legen (Vorlage „Soundboard“ oder Aktion „Sound abspielen“)." }),
+        h("div", { class: "copy-row" }, h("code", { text: App.soundFolder || "%APPDATA%\TabDeck\sounds" })),
+        h("div", { class: "row wrap", style: { marginTop: "10px" } },
+          h("button", { class: "btn", text: "📂 Ordner am PC öffnen", onclick: () => rpc("sounds_open_folder").then(() => toast("Ordner am PC geöffnet")).catch((e) => toast(e.message, "error")) }),
+          h("button", { class: "btn", text: "⟳ Aktualisieren", onclick: async () => { await loadSounds(); render(); } }),
+          uploadSoundButton(() => render()),
+          h("button", { class: "btn danger", text: "⏹ Alle stoppen", onclick: () => { rpc("sound_stop").catch(() => {}); stopTabletSound(); } }))),
+      h("div", { class: "section" }, h("h3", { text: `Sounds im Ordner (${files.length})` }),
+        files.length ? files.map((x) => h("div", { class: "src-row" },
+          h("span", { class: "src-logo", text: "🔊" }),
+          h("div", { class: "src-main" }, h("b", { text: soundName(x.name) }), h("span", { class: "help", text: `${x.name} · ${fmtSize(x.size)}` })),
+          h("button", { class: "btn small", html: icon("play") + "Am PC", onclick: () => rpc("test_action", { action: { type: "sound", op: "play", file: x.name, volume: 100, mode: "restart" } }).catch((e) => toast(e.message, "error")) }),
+          h("button", { class: "btn small", html: icon("play") + "Tablet", onclick: () => playTabletSound({ file: x.name, volume: 100, mode: "restart" }) })))
+          : h("p", { class: "help", text: "Noch keine Sounds – Dateien in den Ordner legen und „Aktualisieren“ tippen." })),
+      h("div", { class: "section" }, h("h3", { text: "Soundboard-Seite" }),
+        h("p", { class: "help", text: "Erstellt eine Seite „Soundboard“ mit einer Taste für jeden Sound und einer Stopp-Taste. Danach „Speichern“." }),
+        h("button", { class: "btn primary", disabled: !files.length, html: icon("grid") + "Soundboard-Seite erzeugen", onclick: () => {
+          buildSoundboardPage(draft, files);
+          toast("Seite „Soundboard“ erstellt – jetzt speichern", "ok");
+        } })),
+    );
+  };
+  loadSounds().then(render);
+  render();
+  return [box];
+}
+
+function buildSoundboardPage(cfg, files) {
+  let page = cfg.pages.find((p) => p.id === "soundboard");
+  if (!page) { page = { id: "soundboard", name: "Soundboard", buttons: {} }; cfg.pages.push(page); }
+  const total = cfg.settings.columns * cfg.settings.rows;
+  const colors = [C.vol, C.discord, C.spotify, C.warn, "#d9467f", C.sys, "#e0a526", C.green, "#b44bd6", "#0e7490"];
+  const b = { 0: { label: "Zurück", icon: "⬅️", color: C.dark, actions: [{ type: "back" }] } };
+  files.slice(0, total - 2).forEach((x, i) => {
+    b[i + 1] = { label: soundName(x.name), icon: "🔊", color: colors[i % colors.length],
+      actions: [{ type: "sound", op: "play", file: x.name, volume: 100, mode: "restart", target: "pc" }], active: { color: C.green } };
+  });
+  b[total - 1] = { label: "Alle stoppen", icon: "⏹️", color: C.rec, actions: [{ type: "sound", op: "stop_all" }] };
+  page.buttons = Object.fromEntries(Object.entries(b).map(([k, v]) => [String(k), v]));
+}
+
 function fieldEl(action, f, rerender, onChange) {
   const val = action[f.k];
   let input;
@@ -1811,6 +1959,9 @@ function fieldEl(action, f, rerender, onChange) {
       break;
     case "spotifylink":
       input = spotifyLinkField(action, f, onChange);
+      break;
+    case "soundfile":
+      input = soundFileField(action, f, onChange, rerender);
       break;
     case "datalist": {
       const id = "dl-" + uid();
@@ -1919,6 +2070,7 @@ function openEditor(slot) {
   });
   App.editorCtx = { draft, render };
   render();
+  if (draft.actions.some((a) => a.type === "sound")) loadSounds().then(() => rerenderWhenIdle(body, render));
   const onState = (e) => { if ((e.detail || []).includes("appicons")) rerenderWhenIdle(body, render); else updatePreview(); };
   document.addEventListener("tabdeck:state", onState);
   const origClose = m.close;
@@ -2098,7 +2250,7 @@ function openSettings() {
   let tab = "general";
   const tabsBar = h("div", { class: "tabs2" });
   const body = h("div", { class: "m-body" });
-  const TABS = [["general", "Allgemein"], ["pages", "Seiten"], ["discord", "Discord"], ["spotify", "Spotify"], ["obs", "OBS"], ["backup", "Sicherung"], ["info", "Info"]];
+  const TABS = [["general", "Allgemein"], ["pages", "Seiten"], ["discord", "Discord"], ["spotify", "Spotify"], ["obs", "OBS"], ["sounds", "Sounds"], ["backup", "Sicherung"], ["info", "Info"]];
 
   const num = (obj, key, label, min, max, help) => h("div", { class: "field" }, h("label", { text: label }),
     h("input", { type: "number", min, max, value: obj[key], inputmode: "numeric", oninput: (e) => { const v = Number(e.target.value); if (v >= min && v <= max) obj[key] = v; } }),
@@ -2194,6 +2346,7 @@ function openSettings() {
         h("button", { class: "btn", text: "Status zurücksetzen (nicht stumm)", onclick: () => rpc("discord_reset").then(() => toast("Zurückgesetzt", "ok")).catch((e) => toast(e.message, "error")) })),
     ],
     spotify: () => spotifySettings(),
+    sounds: () => soundSettings(draft, show),
     backup: () => [
       h("div", { class: "section" }, h("h3", { text: "Sichern" }),
         h("p", { class: "help", text: "Lädt deine komplette Tastenbelegung als Datei herunter." }),

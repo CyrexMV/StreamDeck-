@@ -125,7 +125,8 @@ body.editing .slot.empty::after { content: "+"; font-size: calc(var(--cell) * .3
 .label {
   position: relative; max-width: 100%; padding: 0 8%;
   font-size: calc(var(--cell) * .115); font-weight: 650; line-height: 1.15; text-align: center;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: break-word; hyphens: auto; -webkit-hyphens: auto;
 }
 .value {
   position: absolute; top: 7%; right: 9%; font-size: calc(var(--cell) * .095); font-weight: 700; opacity: .85;

@@ -132,6 +132,13 @@ Weitere nützliche Ziele für „Öffnen“: `spotify:`, `discord://`, `steam://
 - auf einen **Seiten-Reiter** oben: Loslassen legt sie ins erste freie Feld dieser Seite. Kurz darüber **halten**
   öffnet die Seite, dann kannst du sie dort genau platzieren.
 
+**Eigene Sounds (Soundboard):** MP3- oder WAV-Dateien in den Ordner **`%APPDATA%\TabDeck\sounds`** legen (am Tablet:
+⚙️ → **Sounds** → „Ordner am PC öffnen“, oder dort direkt vom Tablet hochladen). Dann eine Taste mit Vorlage
+**„Sound“** anlegen und den Sound auswählen. Du kannst die Lautstärke wählen, ob am **PC** (z. B. für den Stream) oder
+auf dem **Tablet** abgespielt wird, und was erneutes Drücken macht: von vorn, stoppen oder zusätzlich abspielen. Die
+Taste leuchtet, solange der Sound läuft. „Alle Sounds stoppen“ beendet alles. Unter ⚙️ → Sounds erzeugt
+**„Soundboard-Seite erzeugen“** automatisch eine Seite mit allen Sounds.
+
 **Song per Link abspielen:** Neue Taste → Vorlage **„Song abspielen“** (oder Aktion *Spotify → Song / Album / Playlist
 abspielen*). In Spotify beim Song auf **„⋯ → Teilen → Link kopieren“** tippen und den Link einfügen. TabDeck zeigt Titel
 und Cover an. Mit **„Cover als Bild“** und **„Titel als Beschriftung“** wird die Taste zur Album-Kachel. Beim Drücken spielt

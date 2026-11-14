@@ -79,6 +79,11 @@ class ActionRunner:
             await asyncio.to_thread(self.s.system.command, a.get("command", ""))
         elif t == "system":
             await asyncio.to_thread(self.s.system.power, a.get("op", ""))
+        elif t == "sound":
+            if a.get("op") == "stop_all":
+                self.s.sounds.stop()
+            elif a.get("target") != "tablet":  # „auf dem Tablet“ spielt das Tablet selbst ab
+                await self.s.sounds.play(a.get("file", ""), a.get("volume", 100), a.get("mode", "restart"))
         elif t == "delay":
             await asyncio.sleep(max(0, min(60_000, int(a.get("ms") or 0))) / 1000)
         elif t in CLIENT_ONLY:
