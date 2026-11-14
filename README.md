@@ -141,7 +141,9 @@ Taste leuchtet, solange der Sound läuft. „Alle Sounds stoppen“ beendet alle
 
 **Sounds im Stream (auch ohne Desktop-Audio):** Wiedergabe **„In OBS“** wählen (oder unter ⚙️ → Sounds „Alle Sound-Tasten
 auf ‚In OBS‘ umstellen“). TabDeck legt in OBS die Medienquelle **„TabDeck Sounds“** an und spielt darüber ab. Sie landet in
-Stream und Aufnahme und erscheint im OBS-Mixer, wo du die Lautstärke regelst. Selbst hörst du sie über das OBS-Monitoring:
+Stream und Aufnahme und erscheint im OBS-Mixer. Dort regelst du die Gesamtlautstärke des Soundboards. Der Fader und
+die Stummschaltung bleiben so, wie du sie einstellst. Die Lautstärke pro Taste wirkt zusätzlich über den Filter
+„TabDeck Lautstärke“. Selbst hörst du sie über das OBS-Monitoring:
 *OBS → Einstellungen → Audio → Erweitert → Monitoring-Gerät* = dein Kopfhörer. OBS muss dafür auf demselben PC laufen
 und verbunden sein.
 

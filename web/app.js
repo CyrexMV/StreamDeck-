@@ -165,7 +165,7 @@ const ACTIONS = {
       { k: "target", label: "Abspielen", type: "select", show: (a) => a.op !== "stop_all",
         options: [["pc", "Am PC-Lautsprecher"], ["obs", "In OBS (Stream & Aufnahme – auch ohne Desktop-Audio)"], ["tablet", "Auf dem Tablet"]] },
       { k: "_obs_hint", type: "info", show: (a) => a.op !== "stop_all" && a.target === "obs",
-        html: "Spielt über die Medienquelle <b>„TabDeck Sounds“</b> in OBS (wird automatisch angelegt). Du hörst ihn über das OBS-Monitoring mit. Nur „von vorn“ oder „stoppen“ – Sounds laufen hier nicht übereinander." },
+        html: "Spielt über die Medienquelle <b>„TabDeck Sounds“</b> in OBS (wird automatisch angelegt). Du hörst ihn über das OBS-Monitoring mit. Die Gesamtlautstärke regelst du am Fader „TabDeck Sounds“ im OBS-Mixer – er bleibt, wo du ihn hinstellst. Die Lautstärke hier wirkt zusätzlich (100 % = wie der Fader). Nur „von vorn“ oder „stoppen“ – Sounds laufen hier nicht übereinander." },
       { k: "mode", label: "Erneut drücken, während er läuft", type: "select", show: (a) => a.op !== "stop_all",
         options: [["restart", "Von vorn starten"], ["toggle", "Stoppen"], ["overlap", "Zusätzlich noch einmal abspielen"]] },
     ],

@@ -47,6 +47,7 @@ AUDIO_SETTING_KINDS = {
 
 
 SOUND_INPUT = "TabDeck Sounds"
+SOUND_GAIN_FILTER = "TabDeck Lautstärke"
 MEDIA_STATES = {
     "OBS_MEDIA_STATE_NONE": "keine Datei geladen", "OBS_MEDIA_STATE_OPENING": "öffnet die Datei",
     "OBS_MEDIA_STATE_BUFFERING": "lädt", "OBS_MEDIA_STATE_PAUSED": "pausiert", "OBS_MEDIA_STATE_STOPPED": "gestoppt",
@@ -104,6 +105,7 @@ class OBSClient:
         self._sound_file: str | None = None
         self._sound_loaded: str | None = None
         self._saw_playing = False
+        self._sound_gain: float | None = None
 
     # ------------------------------------------------------------- Lebenszyklus
     def configure(self, cfg: dict) -> None:
@@ -545,12 +547,9 @@ class OBSClient:
                 await self.request("SetInputSettings", {"inputName": SOUND_INPUT, "inputSettings": settings, "overlay": True})
                 await asyncio.sleep(0.2)  # OBS lädt die neue Datei
             self._sound_loaded = path
-        await self.request("SetInputVolume", {"inputName": SOUND_INPUT, "inputVolumeMul": max(0.0, min(100.0, float(volume))) / 100})
-        try:
-            if (await self.request("GetInputMute", {"inputName": SOUND_INPUT})).get("inputMuted"):
-                await self.request("SetInputMute", {"inputName": SOUND_INPUT, "inputMuted": False})
-        except OBSError:
-            pass
+        # Fader und Stummschaltung von „TabDeck Sounds“ gehören dir – nicht anfassen.
+        # Die Lautstärke pro Taste wirkt zusätzlich über einen Verstärkungs-Filter.
+        await self._apply_sound_gain(volume)
         self._sound_file = name
         await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
         status = await self._wait_media_playing(2.5)
@@ -569,6 +568,28 @@ class OBSClient:
         raise OBSError(
             f"OBS spielt den Sound nicht ab (Status: {MEDIA_STATES.get(status, status)}). Prüfe in OBS: Ist „{SOUND_INPUT}“ in der "
             f"aktuellen Szene „{scene}“ sichtbar (Auge an)? Rechtsklick → Eigenschaften: ist die Datei eingetragen?")
+
+    async def _apply_sound_gain(self, volume: float) -> None:
+        """Lautstärke der Taste (0–100 %) relativ zum OBS-Fader – als Filter „TabDeck Lautstärke“ (−30 … 0 dB)."""
+        volume = max(0.0, min(100.0, float(volume if volume not in (None, "") else 100)))
+        db = 0.0 if volume >= 100 else max(-30.0, round(20 * math.log10(max(volume, 0.1) / 100), 1))
+        if db == self._sound_gain:
+            return
+        try:
+            await self.request("GetSourceFilter", {"sourceName": SOUND_INPUT, "filterName": SOUND_GAIN_FILTER})
+            exists = True
+        except OBSError:
+            exists = False
+        try:
+            if exists:
+                await self.request("SetSourceFilterSettings", {"sourceName": SOUND_INPUT, "filterName": SOUND_GAIN_FILTER,
+                                                               "filterSettings": {"db": db}, "overlay": True})
+            elif db != 0.0:  # Filter erst anlegen, wenn eine Taste leiser als 100 % sein soll
+                await self.request("CreateSourceFilter", {"sourceName": SOUND_INPUT, "filterName": SOUND_GAIN_FILTER,
+                                                          "filterKind": "gain_filter", "filterSettings": {"db": db}})
+            self._sound_gain = db
+        except OBSError as exc:
+            log.debug("Lautstärke-Filter nicht setzbar: %s", exc)
 
     async def _ensure_sound_visible(self, scene: str) -> None:
         """Quelle muss in der aktuellen Szene vorhanden und eingeblendet sein – sonst ist sie inaktiv und stumm."""
