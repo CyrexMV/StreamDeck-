@@ -383,3 +383,24 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .track.paused, .f-song.paused { opacity: .55; }
 .face .track { margin-top: -3%; }
 @keyframes marquee { to { transform: translateX(-50%); } }
+
+/* ---------------------------------------------- Mikrofon/Kopfhörer-Symbole */
+.sym {
+  position: relative; display: grid; place-items: center; border-radius: 50%;
+  width: calc(var(--cell) * .42); height: calc(var(--cell) * .42); color: var(--f, #fff);
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.sym svg, .sym-small svg {
+  width: 74%; height: 74%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  overflow: visible; filter: drop-shadow(0 2px 3px rgba(0,0,0,.3));
+}
+.sym.muted, .sym-small.muted { color: #ff4d55; }
+.sym.muted { background: rgba(12,14,18,.6); box-shadow: 0 0 0 2px rgba(255,77,85,.45), 0 0 18px rgba(255,77,85,.35); }
+.sym .slash-bg, .sym-small .slash-bg { stroke: rgba(12,14,18,.95); stroke-width: 5.5; }
+.sym .slash, .sym-small .slash { stroke: currentColor; stroke-width: 2.4; }
+.sym-small { display: inline-grid; place-items: center; width: 1.25em; height: 1.25em; color: inherit; }
+.sym-small svg { width: 100%; height: 100%; }
+.f-mute { color: #fff; }
+.fader.muted .f-mute { background: rgba(12,14,18,.6); box-shadow: inset 0 0 0 1.5px rgba(255,77,85,.6); }
+.f-sym { display: grid; place-items: center; width: 36px; height: 36px; color: #fff; }
+.f-sym svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }

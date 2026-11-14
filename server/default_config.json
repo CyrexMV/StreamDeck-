@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "settings": {
     "columns": 8,
     "rows": 4,
@@ -105,10 +105,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Ton aus"
-          }
+          },
+          "symbol": "speaker"
         },
         "6": {
           "label": "Lauter",
@@ -141,11 +140,10 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Stumm"
           },
-          "app_icon": "badge"
+          "app_icon": "badge",
+          "symbol": "mic"
         },
         "9": {
           "label": "Taub",
@@ -158,11 +156,10 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🙉",
             "label": "Taub"
           },
-          "app_icon": "badge"
+          "app_icon": "badge",
+          "symbol": "headphones"
         },
         "10": {
           "label": "PC-Mikro",
@@ -177,10 +174,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🚫",
             "label": "Mikro aus"
-          }
+          },
+          "symbol": "mic"
         },
         "12": {
           "label": "Aufnahme",
@@ -567,10 +563,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Mikro stumm"
-          }
+          },
+          "symbol": "mic"
         },
         "17": {
           "label": "Desktop-Audio",
@@ -584,10 +579,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Desktop stumm"
-          }
+          },
+          "symbol": "speaker"
         },
         "23": {
           "label": "Screenshot",
@@ -627,11 +621,10 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Stumm"
           },
-          "app_icon": "badge"
+          "app_icon": "badge",
+          "symbol": "mic"
         },
         "2": {
           "label": "Taub",
@@ -644,11 +637,10 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🙉",
             "label": "Taub"
           },
-          "app_icon": "badge"
+          "app_icon": "badge",
+          "symbol": "headphones"
         },
         "3": {
           "label": "Push-to-Talk",
@@ -659,7 +651,8 @@
               "type": "discord",
               "op": "ptt"
             }
-          ]
+          ],
+          "symbol": "mic"
         },
         "7": {
           "label": "Discord öffnen",
@@ -701,10 +694,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Discord aus"
-          }
+          },
+          "symbol": "speaker"
         },
         "10": {
           "label": "Discord lauter",
@@ -733,10 +725,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🚫",
             "label": "Mikro aus"
-          }
+          },
+          "symbol": "mic"
         }
       }
     },
@@ -866,10 +857,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Spotify aus"
-          }
+          },
+          "symbol": "speaker"
         },
         "10": {
           "label": "Spotify lauter",
@@ -1095,10 +1085,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🔇",
             "label": "Ton aus"
-          }
+          },
+          "symbol": "speaker"
         },
         "18": {
           "label": "Lauter",
@@ -1126,10 +1115,9 @@
             }
           ],
           "active": {
-            "color": "#d63c3c",
-            "icon": "🚫",
             "label": "Mikro aus"
-          }
+          },
+          "symbol": "mic"
         },
         "20": {
           "label": "PC",

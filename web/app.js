@@ -192,8 +192,8 @@ const T = (label, icon, color, actions, extra = {}) => ({ label, icon, color, ac
 const ACT = (icon, label, color = C.rec) => ({ ...(icon ? { icon } : {}), ...(label ? { label } : {}), color });
 const TEMPLATES = [
   { group: "Discord", items: [
-    T("Mikro", "🎙️", C.discord, [{ type: "discord", op: "mute" }], { active: ACT("🔇", "Stumm") }),
-    T("Taub", "🎧", C.discord, [{ type: "discord", op: "deafen" }], { active: ACT("🙉", "Taub") }),
+    T("Mikro", "🎙️", C.discord, [{ type: "discord", op: "mute" }], { symbol: "mic", active: { label: "Stumm" } }),
+    T("Taub", "🎧", C.discord, [{ type: "discord", op: "deafen" }], { symbol: "headphones", active: { label: "Taub" } }),
     T("Push-to-Talk", "🗣️", C.discord, [{ type: "discord", op: "ptt" }]),
     T("Discord leiser", "🔉", C.vol, [{ type: "volume", target: "app", app: "Discord.exe", op: "down", step: 5 }]),
     T("Discord lauter", "🔊", C.vol, [{ type: "volume", target: "app", app: "Discord.exe", op: "up", step: 5 }]),
@@ -207,7 +207,7 @@ const TEMPLATES = [
     T("Zufall", "🔀", C.spotify, [{ type: "spotify", op: "shuffle" }], { active: ACT(null, "Zufall an", "#14833b") }),
     T("Spotify leiser", "🔉", C.spotify, [{ type: "spotify", op: "volume_down", step: 10 }]),
     T("Spotify lauter", "🔊", C.spotify, [{ type: "spotify", op: "volume_up", step: 10 }]),
-    T("Spotify stumm", "🔈", C.spotify, [{ type: "spotify", op: "mute_toggle" }], { active: ACT("🔇", "Spotify aus") }),
+    T("Spotify stumm", "🔈", C.spotify, [{ type: "spotify", op: "mute_toggle" }], { symbol: "speaker", active: { label: "Spotify aus" } }),
     T("Gefällt mir", "🤍", C.spotify, [{ type: "spotify", op: "like" }], { active: ACT("💚", "Gespeichert", "#14833b") }),
     T("Spotify öffnen", "🎧", C.spotify, [{ type: "open", target: "spotify:" }], { app_icon: "main" }),
     T("Spotify", "🎵", C.dark, [{ type: "page", page: "spotify" }], { app: "spotify", app_icon: "main" }),
@@ -216,7 +216,7 @@ const TEMPLATES = [
     T("Aufnahme", "⏺️", C.obs, [{ type: "obs", op: "record_toggle" }], { active: ACT("🔴", "REC") }),
     T("Stream", "📡", C.obs, [{ type: "obs", op: "stream_toggle" }], { active: ACT("🔴", "LIVE") }),
     T("Szene", "🖼️", C.obs, [{ type: "obs", op: "scene", scene: "" }], { active: ACT(null, null, C.green) }),
-    T("Mikrofon", "🎙️", C.obs, [{ type: "obs", op: "mute_toggle", input: "Mikrofon/AUX" }], { active: ACT("🔇", "Mikro stumm") }),
+    T("Mikrofon", "🎙️", C.obs, [{ type: "obs", op: "mute_toggle", input: "Mikrofon/AUX" }], { symbol: "mic", active: { label: "Mikro stumm" } }),
     T("Quelle", "👁️", C.obs, [{ type: "obs", op: "source_toggle", scene: "", source: "" }], { active: ACT(null, null, C.green) }),
     T("Replay speichern", "💾", C.obs, [{ type: "obs", op: "replay_save" }]),
     T("Virtuelle Kamera", "📷", C.obs, [{ type: "obs", op: "virtualcam_toggle" }], { active: ACT(null, "Kamera an") }),
@@ -225,8 +225,8 @@ const TEMPLATES = [
   { group: "Ton & Windows", items: [
     T("Lauter", "🔊", C.vol, [{ type: "volume", target: "master", op: "up", step: 5 }]),
     T("Leiser", "🔉", C.vol, [{ type: "volume", target: "master", op: "down", step: 5 }]),
-    T("Ton", "🔊", C.vol, [{ type: "volume", target: "master", op: "toggle_mute" }], { active: ACT("🔇", "Ton aus") }),
-    T("PC-Mikro", "🎤", C.grey, [{ type: "volume", target: "mic", op: "toggle_mute" }], { active: ACT("🚫", "Mikro aus") }),
+    T("Ton", "🔊", C.vol, [{ type: "volume", target: "master", op: "toggle_mute" }], { symbol: "speaker", active: { label: "Ton aus" } }),
+    T("PC-Mikro", "🎤", C.grey, [{ type: "volume", target: "mic", op: "toggle_mute" }], { symbol: "mic", active: { label: "Mikro aus" } }),
     T("Sperren", "🔒", C.grey, [{ type: "system", op: "lock" }]),
     T("Screenshot", "✂️", C.grey, [{ type: "hotkey", keys: "win+shift+s", mode: "press" }]),
     T("Task-Manager", "📊", C.grey, [{ type: "hotkey", keys: "ctrl+shift+esc", mode: "press" }]),
@@ -573,7 +573,8 @@ function actionActive(a) {
     case "media":
       return a.op === "play_pause" ? !!m.playing : null;
     case "discord":
-      return a.op === "mute" || a.op === "deafen" ? !!(st.discord || {})[a.op] : null;
+      if (a.op === "mute") return !!(st.discord?.mute || st.discord?.deafen); // taub = Mikro ist auch aus
+      return a.op === "deafen" ? !!st.discord?.deafen : null;
   }
   return null;
 }
@@ -662,7 +663,8 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
     const visual = btn.image
       ? `<img class="img" src="${esc(btn.image)}" alt="" draggable="false">`
       : logo && btn.app_icon === "main" ? `<img class="img appicon" src="${esc(logo)}" alt="" draggable="false">`
-        : ico ? `<span class="icon">${esc(ico)}</span>` : "";
+        : SYMBOLS[btn.symbol] ? symbolHTML(btn.symbol, active)
+          : ico ? `<span class="icon">${esc(ico)}</span>` : "";
     if (btn.image && btn.image_fill) cls += " img-fill";
     inner = visual + (showLabels && label ? `<span class="label">${esc(label)}</span>` : "") + trackHTML(trackForButton(btn));
     if (logo && btn.app_icon === "badge") inner += `<img class="badge" src="${esc(logo)}" alt="" draggable="false">`;
@@ -675,6 +677,22 @@ function faceHTML(btn, pageId, slot, forceActive = null) {
     if (pulsing) cls += " pulse";
   }
   return `<div class="${cls}" style="--b:${color};--f:${fg}">${inner}</div>`;
+}
+
+/* ================================================================ Symbole */
+/* Mikrofon, Kopfhörer, Lautsprecher – bei „stumm“ rot und durchgestrichen (wie in Discord) */
+const SYMBOLS = {
+  mic: '<rect x="9" y="2.5" width="6" height="11.5" rx="3"/><path d="M5.5 10.5v.5a6.5 6.5 0 0 0 13 0v-.5"/><path d="M12 17.5v3.5"/><path d="M8.5 21h7"/>',
+  headphones: '<path d="M3.5 17v-4.5a8.5 8.5 0 0 1 17 0V17"/><path d="M20.5 18.5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3.5 18.5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2h-3z"/>',
+  speaker: '<path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18.5 6a8.5 8.5 0 0 1 0 12"/>',
+};
+const SYMBOL_NAMES = [["", "Emoji / Bild"], ["mic", "Mikrofon – rot durchgestrichen, wenn stumm"],
+  ["headphones", "Kopfhörer – rot durchgestrichen, wenn taub"], ["speaker", "Lautsprecher – rot durchgestrichen, wenn stumm"]];
+const MIC_NAME = /mic|mikro|aux|voice|stimme|headset/i;
+
+function symbolHTML(name, muted, cls = "sym") {
+  const slash = muted ? '<path class="slash-bg" d="M3.5 3.5l17 17"/><path class="slash" d="M3.5 3.5l17 17"/>' : "";
+  return `<span class="${cls}${muted ? " muted" : ""}"><svg viewBox="0 0 24 24" aria-hidden="true">${SYMBOLS[name] || ""}${slash}</svg></span>`;
 }
 
 /* ======================================================== Programm-Logos */
@@ -851,10 +869,11 @@ function faderHTML(ch, { label, icon, logo = null, track = null, vertical, compa
   const v = channelView(ch);
   const key = chKey(ch);
   const lvl = v.level ?? 0;
-  const muteIco = v.muted ? (ch.kind === "mic" ? "🚫" : "🔇") : (ch.kind === "mic" ? "🎤" : "🔊");
+  const muteIco = symbolHTML(ch.kind === "mic" || (ch.kind === "obs" && MIC_NAME.test(ch.input || "")) ? "mic" : "speaker", !!v.muted, "sym-small");
   const cls = `fader ${vertical ? "v" : "h"}${compact ? " compact" : ""}${v.muted ? " muted" : ""}${v.level == null ? " off" : ""}${App.faderDrag === key ? " dragging" : ""}`;
   return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%">` +
-    `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">` : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span>${compact ? "" : trackHTML(track, "f-song")}</div>` +
+    `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">`
+      : String(icon).startsWith("sym:") ? symbolHTML(icon.slice(4), false, "f-sym") : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span>${compact ? "" : trackHTML(track, "f-song")}</div>` +
     `<div class="f-track"><div class="f-fill"></div><div class="f-knob"></div></div>` +
     `<div class="f-foot"><span class="f-val">${esc(faderValueText(ch, v))}</span>` +
     (v.level == null ? "" : `<button class="f-mute" type="button" aria-label="Stumm schalten">${muteIco}</button>`) + `</div></div>`;
@@ -944,8 +963,8 @@ function setupFaders() {
 /* ------------------------------------------------------------------ Mixer */
 function mixerChannels() {
   const st = App.state;
-  const list = [{ kind: "master", label: "PC", icon: "🔊" }];
-  if (st.audio?.mic) list.push({ kind: "mic", label: "Mikrofon", icon: "🎤" });
+  const list = [{ kind: "master", label: "PC", icon: "sym:speaker" }];
+  if (st.audio?.mic) list.push({ kind: "mic", label: "Mikrofon", icon: "sym:mic" });
   const spotifyApi = !!st.spotify?.connected;
   if (spotifyApi) list.push({ kind: "spotify", label: "Spotify", icon: "🎧" });
   const apps = Object.entries(st.audio?.apps || {}).sort((a, b) => prettyApp(a[1].name).localeCompare(prettyApp(b[1].name)));
@@ -1532,7 +1551,7 @@ function openEditor(slot) {
         h("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } },
           h("button", { class: "btn", html: icon("grid") + "Vorlage wählen", onclick: () => openTemplates((tpl) => {
             Object.assign(draft, clone(tpl));
-            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size", "app", "app_icon", "show_track"]) if (!(k in tpl)) delete draft[k];
+            for (const k of ["image", "image_fill", "toggle", "confirm", "active", "widget", "fader", "size", "app", "app_icon", "show_track", "symbol"]) if (!(k in tpl)) delete draft[k];
             render();
           }) }),
           h("div", { class: "help", text: (draft.active || draft.toggle) ? "Links normal, rechts im aktiven Zustand." : "Vorschau" }))),
@@ -1624,7 +1643,13 @@ function appearanceSection(draft, render, updatePreview) {
     h("h3", { text: "Aussehen" }),
     h("div", { class: "field" }, h("label", { text: "Beschriftung" }),
       h("input", { type: "text", value: draft.label || "", placeholder: "z. B. Mikro stumm", oninput: (e) => { draft.label = e.target.value; updatePreview(); } })),
-    h("div", { class: "field" }, h("label", { text: "Symbol" }),
+    h("div", { class: "field" }, h("label", { text: "Symbol-Art" }),
+      h("select", { value: draft.symbol || "", onchange: (e) => {
+        if (e.target.value) draft.symbol = e.target.value; else delete draft.symbol;
+        updatePreview();
+      } }, SYMBOL_NAMES.map(([v, l]) => h("option", { value: v, text: l }))),
+      h("div", { class: "help", text: "Mikrofon, Kopfhörer und Lautsprecher zeigen automatisch an, ob stumm geschaltet ist." })),
+    h("div", { class: "field" }, h("label", { text: "Emoji" }),
       h("div", { class: "row" }, iconInput,
         h("button", { class: "btn", text: "Emoji-Auswahl", onclick: () => { emojiGrid.hidden = !emojiGrid.hidden; } }),
         h("button", { class: "btn", html: icon("image") + (draft.image ? "Anderes Bild" : "Bild"), onclick: () => fileInput.click() }),
@@ -2017,7 +2042,7 @@ function buildObsPage(cfg) {
   if (i % cols) i += cols - (i % cols);
   for (const input of o.inputs || []) {
     if (i >= total) break;
-    b[i++] = T(input, "🎙️", C.obs, [{ type: "obs", op: "mute_toggle", input }], { active: ACT("🔇", null) });
+    b[i++] = T(input, "🎙️", C.obs, [{ type: "obs", op: "mute_toggle", input }], { symbol: MIC_NAME.test(input) ? "mic" : "speaker" });
   }
   page.buttons = Object.fromEntries(Object.entries(b).map(([k, v]) => [String(k), v]));
 }

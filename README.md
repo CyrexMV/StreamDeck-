@@ -132,6 +132,10 @@ Weitere nützliche Ziele für „Öffnen“: `spotify:`, `discord://`, `steam://
 - auf einen **Seiten-Reiter** oben: Loslassen legt sie ins erste freie Feld dieser Seite. Kurz darüber **halten**
   öffnet die Seite, dann kannst du sie dort genau platzieren.
 
+**Stumm-Anzeige wie in Discord:** Mikrofon-, Kopfhörer- und Lautsprecher-Tasten zeigen ein weißes Symbol. Ist stumm
+geschaltet, wird es **rot und durchgestrichen** (bei Discord „taub“ auch das Mikrofon, wie in Discord selbst). Im Editor
+unter **„Symbol-Art“** kannst du das für jede Taste wählen.
+
 **Schiebefader:** Auf der Seite **„Mixer“** erscheint für jedes Programm, das gerade Ton abspielt, automatisch ein
 Fader. Den Regler mit dem Finger hoch- oder runterschieben. Antippen allein verändert nichts, damit es nie plötzlich laut
 wird. 🔊/🔇 unten schaltet stumm. Einzelne Fader legst du auf jede Seite: im Editor bei **„Art der Kachel“** →

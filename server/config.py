@@ -51,7 +51,7 @@ DEFAULT_SETTINGS = {
     "radius": 18,
     "discord": {"mute": "f14", "deafen": "f15", "ptt": "f13"},
 }
-CONFIG_VERSION = 4
+CONFIG_VERSION = 5
 DEFAULT_OBS = {"enabled": True, "host": "127.0.0.1", "port": 4455, "password": ""}
 
 
@@ -226,7 +226,47 @@ class ConfigStore:
         if version < 4:
             # Echte Programm-Logos ergänzen – alles andere an der Belegung bleibt unverändert
             self._add_app_logos()
+        if version < 5:
+            # Mikrofon/Kopfhörer/Lautsprecher-Symbole, die bei „stumm“ rot durchgestrichen werden
+            self._add_mute_symbols()
         self.data["version"] = CONFIG_VERSION
+
+    def _add_mute_symbols(self) -> None:
+        mic_names = ("mic", "mikro", "aux", "voice", "stimme", "headset")
+        mute_ops = ("toggle_mute", "mute", "unmute")
+        old_icons = {"🔇", "🙉", "🚫", "🎙️", "🎤", "🎧", "🔊", "🔈", "🔉"}
+        changed = 0
+        for page in self.data.get("pages", []):
+            for btn in (page.get("buttons") or {}).values():
+                if btn.get("image") or btn.get("widget") or "symbol" in btn or btn.get("app_icon") == "main":
+                    continue
+                a = (btn.get("actions") or [{}])[0]
+                t, op = a.get("type"), a.get("op")
+                symbol = None
+                if t == "discord" and op in ("mute", "ptt"):
+                    symbol = "mic"
+                elif t == "discord" and op == "deafen":
+                    symbol = "headphones"
+                elif t == "volume" and op in mute_ops:
+                    symbol = "mic" if a.get("target") == "mic" else "speaker"
+                elif t == "spotify" and op == "mute_toggle":
+                    symbol = "speaker"
+                elif t == "obs" and op == "mute_toggle":
+                    symbol = "mic" if any(n in str(a.get("input", "")).lower() for n in mic_names) else "speaker"
+                if not symbol:
+                    continue
+                btn["symbol"] = symbol
+                active = btn.get("active")
+                if isinstance(active, dict):
+                    if active.get("icon") in old_icons:
+                        active.pop("icon")
+                    if active.get("color") in ("#d63c3c", "#c9572b"):  # rote Standardfarbe → Symbol zeigt den Zustand
+                        active.pop("color")
+                    if not active:
+                        btn.pop("active")
+                changed += 1
+        if changed:
+            log.info("%d Stumm-Tasten zeigen jetzt Mikrofon/Kopfhörer/Lautsprecher-Symbole", changed)
 
     def _add_app_logos(self) -> None:
         """Echte Programm-Logos: Öffnen-/Ordner-Tasten als großes Symbol, App-Tasten der Startseite als Abzeichen."""
