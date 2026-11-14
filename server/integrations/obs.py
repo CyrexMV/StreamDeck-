@@ -47,6 +47,11 @@ AUDIO_SETTING_KINDS = {
 
 
 SOUND_INPUT = "TabDeck Sounds"
+MEDIA_STATES = {
+    "OBS_MEDIA_STATE_NONE": "keine Datei geladen", "OBS_MEDIA_STATE_OPENING": "öffnet die Datei",
+    "OBS_MEDIA_STATE_BUFFERING": "lädt", "OBS_MEDIA_STATE_PAUSED": "pausiert", "OBS_MEDIA_STATE_STOPPED": "gestoppt",
+    "OBS_MEDIA_STATE_ENDED": "beendet", "OBS_MEDIA_STATE_ERROR": "Fehler",
+}
 
 
 def _db(value) -> float:
@@ -97,6 +102,8 @@ class OBSClient:
         self._audio_on: dict[str, bool] = {}
         self._heard: set[str] = set()
         self._sound_file: str | None = None
+        self._sound_loaded: str | None = None
+        self._saw_playing = False
 
     # ------------------------------------------------------------- Lebenszyklus
     def configure(self, cfg: dict) -> None:
@@ -513,14 +520,16 @@ class OBSClient:
         if mode == "toggle" and self.state.get("sound_playing") == name:
             await self.stop_sound()
             return
-        scene = self.state.get("current_scene") or (await self.request("GetCurrentProgramScene")).get("sceneName")
+        path = path.replace("\\", "/")  # Schreibweise, die OBS selbst für Dateipfade nutzt
+        scene = (await self.request("GetCurrentProgramScene")).get("currentProgramSceneName") \
+            or self.state.get("current_scene")
         settings = {"is_local_file": True, "local_file": path, "looping": False,
                     "restart_on_activate": False, "close_when_inactive": False, "clear_on_media_end": True}
         try:
-            await self.request("GetInputSettings", {"inputName": SOUND_INPUT})
+            current = (await self.request("GetInputSettings", {"inputName": SOUND_INPUT})).get("inputSettings") or {}
             exists = True
         except OBSError:
-            exists = False
+            current, exists = {}, False
         if not exists:
             await self.request("CreateInput", {"sceneName": scene, "inputName": SOUND_INPUT, "inputKind": "ffmpeg_source",
                                                "inputSettings": settings, "sceneItemEnabled": True})
@@ -529,18 +538,71 @@ class OBSClient:
                                                                "monitorType": "OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT"})
             except OBSError:
                 pass
+            self._sound_loaded = path
         else:
-            # Quelle muss in der aktuellen Szene sein, sonst ist sie nicht aktiv und bleibt stumm
-            try:
-                await self.request("GetSceneItemId", {"sceneName": scene, "sourceName": SOUND_INPUT})
-            except OBSError:
-                await self.request("CreateSceneItem", {"sceneName": scene, "sourceName": SOUND_INPUT, "sceneItemEnabled": True})
-            await self.request("SetInputSettings", {"inputName": SOUND_INPUT, "inputSettings": settings, "overlay": True})
+            await self._ensure_sound_visible(scene)
+            if str(current.get("local_file", "")).replace("\\", "/") != path or not current.get("is_local_file", True):
+                await self.request("SetInputSettings", {"inputName": SOUND_INPUT, "inputSettings": settings, "overlay": True})
+                await asyncio.sleep(0.2)  # OBS lädt die neue Datei
+            self._sound_loaded = path
         await self.request("SetInputVolume", {"inputName": SOUND_INPUT, "inputVolumeMul": max(0.0, min(100.0, float(volume))) / 100})
+        try:
+            if (await self.request("GetInputMute", {"inputName": SOUND_INPUT})).get("inputMuted"):
+                await self.request("SetInputMute", {"inputName": SOUND_INPUT, "inputMuted": False})
+        except OBSError:
+            pass
         self._sound_file = name
         await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
-        self.state["sound_playing"] = name
+        status = await self._wait_media_playing(2.5)
+        if status != "OBS_MEDIA_STATE_PLAYING":
+            # noch einmal anstoßen – z. B. wenn OBS die Datei gerade erst geladen hat
+            await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
+            status = await self._wait_media_playing(2.5)
+        if status == "OBS_MEDIA_STATE_PLAYING" or status == "OBS_MEDIA_STATE_ENDED" and self._saw_playing:
+            self.state["sound_playing"] = name if status == "OBS_MEDIA_STATE_PLAYING" else None
+            self._notify()
+            return
+        self.state["sound_playing"] = None
         self._notify()
+        if status == "OBS_MEDIA_STATE_ERROR":
+            raise OBSError(f"OBS kann „{name}“ nicht abspielen – Datei beschädigt oder Format nicht unterstützt (MP3/WAV nutzen).")
+        raise OBSError(
+            f"OBS spielt den Sound nicht ab (Status: {MEDIA_STATES.get(status, status)}). Prüfe in OBS: Ist „{SOUND_INPUT}“ in der "
+            f"aktuellen Szene „{scene}“ sichtbar (Auge an)? Rechtsklick → Eigenschaften: ist die Datei eingetragen?")
+
+    async def _ensure_sound_visible(self, scene: str) -> None:
+        """Quelle muss in der aktuellen Szene vorhanden und eingeblendet sein – sonst ist sie inaktiv und stumm."""
+        try:
+            item_id = (await self.request("GetSceneItemId", {"sceneName": scene, "sourceName": SOUND_INPUT}))["sceneItemId"]
+        except OBSError:
+            await self.request("CreateSceneItem", {"sceneName": scene, "sourceName": SOUND_INPUT, "sceneItemEnabled": True})
+            return
+        enabled = (await self.request("GetSceneItemEnabled", {"sceneName": scene, "sceneItemId": item_id})).get("sceneItemEnabled")
+        if not enabled:
+            await self.request("SetSceneItemEnabled", {"sceneName": scene, "sceneItemId": item_id, "sceneItemEnabled": True})
+
+    async def _wait_media_playing(self, timeout: float) -> str:
+        """Fragt OBS, ob die Medienquelle wirklich abspielt."""
+        self._saw_playing = False
+        status = "OBS_MEDIA_STATE_NONE"
+        loop = asyncio.get_running_loop()
+        end = loop.time() + timeout
+        while loop.time() < end:
+            await asyncio.sleep(0.15)
+            try:
+                status = (await self.request("GetMediaInputStatus", {"inputName": SOUND_INPUT})).get("mediaState") or status
+            except OBSError:
+                continue
+            if status in ("OBS_MEDIA_STATE_OPENING", "OBS_MEDIA_STATE_BUFFERING"):
+                self._saw_playing = True
+            if status == "OBS_MEDIA_STATE_PLAYING":
+                self._saw_playing = True
+                return status
+            if status == "OBS_MEDIA_STATE_ENDED" and self._saw_playing:
+                return status  # sehr kurzer Sound – schon fertig
+            if status == "OBS_MEDIA_STATE_ERROR":
+                return status
+        return status
 
     async def stop_sound(self) -> None:
         if not self.state.get("connected"):
