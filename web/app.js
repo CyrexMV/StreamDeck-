@@ -267,6 +267,7 @@ const App = {
   spans: {},
   faderDrag: null,
   faderLocal: {},
+  mixerScroll: {},
   moveFrom: null,
   rpcSeq: 0,
   rpcPending: new Map(),
@@ -420,7 +421,7 @@ function layout() {
   if (transposed !== App.transposed) {
     App.transposed = transposed;
     if ($("#grid").childElementCount) renderGrid();
-  }
+  } else if (currentPage()?.type === "mixer" && $("#grid").childElementCount) renderMixer(false);
 }
 
 function renderTabs() {
@@ -458,11 +459,13 @@ function renderGrid() {
   document.body.classList.toggle("moving", App.moveFrom !== null);
   $("#edithint").hidden = !App.editing;
   $("#edithint span").textContent = page.type === "mixer"
-    ? "Der Mixer zeigt automatisch alles, was gerade Ton abspielt – hier gibt es keine Kacheln zum Bearbeiten."
+    ? (page.mixer?.mode === "custom" ? "Eigener Mixer – mit „Mixer einrichten“ Quellen hinzufügen, entfernen und sortieren."
+      : "Der Mixer zeigt automatisch alles, was Ton abspielt. Mit „Mixer einrichten“ wählst du die Quellen selbst.")
     : App.moveFrom !== null
       ? "Tippe auf das Ziel-Feld, um die Taste dorthin zu verschieben."
       : "Bearbeiten: Taste antippen zum Ändern – festhalten und ziehen zum Verschieben (auch auf einen Seiten-Reiter).";
   $("#btn-edit").classList.toggle("on", App.editing);
+  $("#btn-mixer-setup").hidden = page.type !== "mixer";
   if (page.type === "mixer") { renderMixer(true); return; }
   grid.classList.remove("mixer-mode");
   grid._sig = null;
@@ -887,7 +890,8 @@ function updateFaderDom(key, ch, level) {
   }
 }
 
-/* Fader ziehen: relativ zur Startposition (kein Sprung beim Antippen → keine plötzliche Lautstärke) */
+/* Fader ziehen: relativ zur Startposition (kein Sprung beim Antippen → keine plötzliche Lautstärke).
+   Im Mixer gilt: waagerecht wischen = Seite blättern, senkrecht = Regler bewegen. */
 function setupFaders() {
   const grid = $("#grid");
   const INTERVAL = { spotify: 300, obs: 80 };
@@ -899,22 +903,25 @@ function setupFaders() {
     e.stopImmediatePropagation();
     const ch = JSON.parse(f.dataset.ch);
     const key = chKey(ch);
-    if (S().haptics !== false && navigator.vibrate) navigator.vibrate(8);
-    if (e.target.closest(".f-mute")) {
-      rpc("mute_channel", ch).catch((err) => toast(err.message, "error"));
-      return;
-    }
-    const v = channelView(ch);
-    if (v.level == null) { toast(`${f.dataset.label}: ${v.note}`, "error"); return; }
-    const track = f.querySelector(".f-track").getBoundingClientRect();
+    const onMute = !!e.target.closest(".f-mute");
     const vertical = f.classList.contains("v");
-    const len = Math.max(40, vertical ? track.height : track.width);
-    const startPos = vertical ? e.clientY : e.clientX;
-    const startLevel = v.level;
-    let last = startLevel, lastSent = 0, timer = null, moved = false, errorShown = false;
-    App.faderDrag = key;
-    f.classList.add("dragging");
+    const scroller = f.closest(".mixer-scroll");
+    const sx = e.clientX, sy = e.clientY;
+    const startScroll = scroller ? scroller.scrollLeft : 0;
+    let mode = null; // null = noch offen, "fader", "swipe", "none"
+    let startLevel = 0, len = 100, last = 0, lastSent = 0, timer = null, moved = false, errorShown = false;
+    if (S().haptics !== false && navigator.vibrate) navigator.vibrate(8);
 
+    const beginFader = () => {
+      const v = channelView(ch);
+      if (v.level == null) { toast(`${f.dataset.label}: ${v.note}`, "error"); mode = "none"; return; }
+      mode = "fader";
+      startLevel = last = v.level;
+      const track = f.querySelector(".f-track").getBoundingClientRect();
+      len = Math.max(40, vertical ? track.height : track.width);
+      App.faderDrag = key;
+      f.classList.add("dragging");
+    };
     const doSend = () => {
       lastSent = Date.now();
       rpc("set_volume", { ...ch, value: last }).catch((err) => {
@@ -932,8 +939,17 @@ function setupFaders() {
     const onMove = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
       ev.preventDefault();
-      const pos = vertical ? ev.clientY : ev.clientX;
-      const delta = vertical ? startPos - pos : pos - startPos;
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (mode === null) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        if (scroller && vertical && Math.abs(dx) > Math.abs(dy)) {
+          mode = "swipe";
+          scroller.classList.add("swiping");
+        } else beginFader();
+      }
+      if (mode === "swipe") { scroller.scrollLeft = startScroll - dx; return; }
+      if (mode !== "fader") return;
+      const delta = vertical ? -dy : dx;
       const lvl = Math.max(0, Math.min(100, Math.round(startLevel + (delta / len) * 100)));
       if (lvl === last) return;
       last = lvl;
@@ -947,11 +963,20 @@ function setupFaders() {
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("pointercancel", onUp, true);
-      App.faderDrag = null;
-      document.querySelectorAll(`.fader[data-key="${CSS.escape(key)}"]`).forEach((x) => x.classList.remove("dragging"));
-      if (moved) {
-        App.faderLocal[key] = { level: last, until: Date.now() + 2500 };
-        send(true);
+      if (mode === "swipe") { snapMixer(scroller, startScroll, ev.clientX - sx); return; }
+      if (mode === "fader") {
+        App.faderDrag = null;
+        document.querySelectorAll(`.fader[data-key="${CSS.escape(key)}"]`).forEach((x) => x.classList.remove("dragging"));
+        if (moved) {
+          App.faderLocal[key] = { level: last, until: Date.now() + 2500 };
+          send(true);
+        }
+        return;
+      }
+      if (mode === null && ev.type === "pointerup") {
+        // Antippen ohne Bewegung
+        if (onMute) rpc("mute_channel", ch).catch((err) => toast(err.message, "error"));
+        else { const v = channelView(ch); if (v.level == null) toast(`${f.dataset.label}: ${v.note}`, "error"); }
       }
     };
     window.addEventListener("pointermove", onMove, true);
@@ -961,22 +986,38 @@ function setupFaders() {
 }
 
 /* ------------------------------------------------------------------ Mixer */
-function mixerChannels() {
+const MIXER_WIDTHS = [["96", "Schmal – mehr Regler pro Seite"], ["124", "Normal"], ["160", "Breit – weniger Regler pro Seite"]];
+
+/* Alle Quellen, die gerade verfügbar sind (für „Automatisch“ und die Auswahl im Einrichten-Dialog) */
+function availableChannels() {
   const st = App.state;
-  const list = [{ kind: "master", label: "PC", icon: "sym:speaker" }];
-  if (st.audio?.mic) list.push({ kind: "mic", label: "Mikrofon", icon: "sym:mic" });
+  const list = [{ kind: "master" }];
+  if (st.audio?.mic || st.audio?.available === false) list.push({ kind: "mic" });
   const spotifyApi = !!st.spotify?.connected;
-  if (spotifyApi) list.push({ kind: "spotify", label: "Spotify", icon: "🎧" });
+  if (spotifyApi) list.push({ kind: "spotify" });
   const apps = Object.entries(st.audio?.apps || {}).sort((a, b) => prettyApp(a[1].name).localeCompare(prettyApp(b[1].name)));
   for (const [k, a] of apps) {
     if (k === "spotify" && spotifyApi) continue; // echte Spotify-App-Lautstärke wird schon angezeigt
-    list.push({ kind: "app", app: a.name, label: prettyApp(a.name), icon: APP_ICONS[k] || "🔊" });
+    list.push({ kind: "app", app: a.name });
   }
   const o = st.obs || {};
   if (o.connected) for (const input of o.inputs || []) {
-    if ((o.volumes || {})[input] != null) list.push({ kind: "obs", input, label: input, icon: "🎬", group: "obs" });
+    if ((o.volumes || {})[input] != null) list.push({ kind: "obs", input });
   }
   return list;
+}
+
+/* Kanal mit Anzeigename und Symbol versehen */
+function decorateChannel(c) {
+  const core = c.kind === "app" ? { kind: "app", app: c.app || "" } : c.kind === "obs" ? { kind: "obs", input: c.input || "" } : { kind: c.kind };
+  const icon = { master: "sym:speaker", mic: "sym:mic", spotify: "🎧", obs: "🎬" }[c.kind] || APP_ICONS[safeKey(c.app)] || "🔊";
+  return { ...core, label: c.label || channelName(core), icon, group: c.kind === "obs" ? "obs" : undefined };
+}
+
+function mixerChannels(page) {
+  const m = page?.mixer || {};
+  if (m.mode === "custom") return (m.channels || []).map(decorateChannel);
+  return availableChannels().map(decorateChannel);
 }
 
 function stripHTML(ch) {
@@ -987,31 +1028,179 @@ function stripHTML(ch) {
   return faderHTML(core, { label, icon, logo, track, vertical: true }) + (group === "obs" ? `<span class="strip-tag">OBS</span>` : "");
 }
 
+/* Seiten-Aufteilung: so viele Regler pro Seite, wie bei der gewählten Breite hineinpassen */
+function mixerGeometry(width, count, minWidth) {
+  const gap = S().gap ?? 12;
+  const perPage = Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
+  const stripW = (width - gap * (perPage - 1)) / perPage;
+  const pages = Math.max(1, Math.ceil(count / perPage));
+  return { gap, perPage, stripW, pages, pageW: width + gap };
+}
+
 function renderMixer(full) {
   const grid = $("#grid");
+  const page = currentPage();
   grid.classList.add("mixer-mode");
   App.spans = {};
-  const chans = mixerChannels();
-  const sig = chans.map((c) => chKey(c)).join("|");
+  const chans = mixerChannels(page);
+  const width = grid.clientWidth || $("#deck").clientWidth;
+  const geo = mixerGeometry(width, chans.length, Number(page.mixer?.width) || 124);
+  const sig = `${page.id}|${geo.perPage}|${Math.round(geo.stripW)}|` + chans.map((c) => chKey(c) + "=" + c.label).join("|");
+
   if (full || grid._sig !== sig) {
+    const oldScroll = grid.querySelector(".mixer-scroll");
+    const keepScroll = oldScroll && grid._page === page.id ? oldScroll.scrollLeft : (App.mixerScroll[page.id] || 0);
     grid._sig = sig;
-    const strips = chans.map((ch) => {
-      const el = h("div", { class: "strip" + (ch.group === "obs" ? " obs" : "") });
+    grid._page = page.id;
+    const scroll = h("div", { class: "mixer-scroll" });
+    scroll.style.setProperty("--strip-w", `${geo.stripW}px`);
+    chans.forEach((ch, i) => {
+      const el = h("div", { class: "strip" + (ch.group === "obs" ? " obs" : "") + (i % geo.perPage === 0 ? " snap" : "") });
       el._ch = ch;
       el._html = stripHTML(ch);
       el.innerHTML = el._html;
-      return el;
+      scroll.append(el);
     });
+    // letzte Seite auffüllen, damit sie sauber einrastet
+    for (let i = chans.length; i < geo.pages * geo.perPage; i++) scroll.append(h("div", { class: "strip filler" }));
+    if (!chans.length) {
+      scroll.append(h("div", { class: "mixer-note", text: page.mixer?.mode === "custom"
+        ? "Noch keine Quellen ausgewählt – ✏️ antippen und „Mixer einrichten“ wählen."
+        : "Gerade spielt nichts Ton ab." }));
+    }
+    const nav = geo.pages > 1 ? mixerNav(scroll, geo) : null;
     const note = App.state.audio?.available === false
-      ? h("div", { class: "mixer-note", text: "Programm-Lautstärken gibt es nur, wenn TabDeck unter Windows läuft." }) : null;
-    fill(grid, strips, note);
+      ? h("div", { class: "mixer-note small", text: "Programm-Lautstärken gibt es nur, wenn TabDeck unter Windows läuft." }) : null;
+    fill(grid, scroll, nav, note);
+    scroll.scrollLeft = Math.min(keepScroll, scroll.scrollWidth);
+    scroll.addEventListener("scroll", () => {
+      App.mixerScroll[page.id] = scroll.scrollLeft;
+      nav?._update();
+    }, { passive: true });
+    nav?._update();
     return;
   }
-  for (const el of grid.querySelectorAll(".strip")) {
+  for (const el of grid.querySelectorAll(".strip:not(.filler)")) {
     if (App.faderDrag === chKey(el._ch)) continue;
     const html = stripHTML(el._ch);
     if (el._html !== html) { el.innerHTML = html; el._html = html; }
   }
+}
+
+function mixerNav(scroll, geo) {
+  const go = (page) => scroll.scrollTo({ left: Math.max(0, Math.min(geo.pages - 1, page)) * geo.pageW, behavior: "smooth" });
+  const cur = () => Math.round(scroll.scrollLeft / geo.pageW);
+  const prev = h("button", { class: "icon-btn nav-arrow", "aria-label": "Vorherige Seite", html: '<svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>', onclick: () => go(cur() - 1) });
+  const next = h("button", { class: "icon-btn nav-arrow", "aria-label": "Nächste Seite", html: '<svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>', onclick: () => go(cur() + 1) });
+  const dots = Array.from({ length: geo.pages }, (_, i) => h("button", { class: "dot", "aria-label": `Seite ${i + 1}`, onclick: () => go(i) }));
+  const nav = h("div", { class: "mixer-nav" }, prev, h("div", { class: "dots" }, dots), next);
+  nav._update = () => {
+    const c = cur();
+    dots.forEach((d, i) => d.classList.toggle("on", i === c));
+    prev.disabled = c <= 0;
+    next.disabled = c >= geo.pages - 1;
+  };
+  return nav;
+}
+
+/* Nach dem Wischen auf einem Regler zur nächsten/vorherigen Seite einrasten */
+function snapMixer(scroll, startScroll, dx) {
+  const gap = S().gap ?? 12;
+  const pageW = scroll.clientWidth + gap;
+  const pages = Math.max(1, Math.round((scroll.scrollWidth + gap) / pageW));
+  const start = Math.round(startScroll / pageW);
+  let target = start;
+  if (dx < -50) target = start + 1;
+  else if (dx > 50) target = start - 1;
+  target = Math.max(0, Math.min(pages - 1, target));
+  scroll.scrollTo({ left: target * pageW, behavior: "smooth" });
+  setTimeout(() => scroll.classList.remove("swiping"), 450);
+}
+
+/* -------------------------------------------------------- Mixer einrichten */
+function openMixerSetup(pageId) {
+  const cfg = clone(App.config);
+  const page = cfg.pages.find((p) => p.id === pageId);
+  if (!page) return;
+  page.mixer ||= { mode: "auto" };
+  const m = page.mixer;
+  const body = h("div", { class: "m-body" });
+  const programInput = h("input", { type: "text", placeholder: "Programm, z. B. RocketLeague.exe", list: "dl-mixer-apps", spellcheck: "false", autocapitalize: "off" });
+  if (!App.audioApps.length && App.features.audio?.ok) rpc("audio_apps").then((l) => { App.audioApps = l || []; render(); }).catch(() => {});
+
+  const logoFor = (c) => {
+    const key = c.kind === "app" ? safeKey(c.app) : c.kind === "spotify" ? "spotify" : c.kind === "obs" ? "obs64" : null;
+    const url = key ? (App.state.appicons || {})[key] : null;
+    if (url) return h("img", { class: "src-logo", src: url, alt: "" });
+    const d = decorateChannel(c);
+    return h("span", { class: "src-logo", html: d.icon.startsWith("sym:") ? symbolHTML(d.icon.slice(4), false, "f-sym") : esc(d.icon) });
+  };
+  const kindName = (c) => ({ master: "PC-Lautstärke", mic: "Windows-Mikrofon", spotify: "Spotify-App (echte App-Lautstärke)",
+    app: "Programm (Windows-Mixer)", obs: "OBS-Audioquelle" }[c.kind]);
+
+  const render = () => {
+    const chosen = new Set((m.channels || []).map(chKey));
+    const offers = [...availableChannels(), { kind: "master" }, { kind: "mic" }, { kind: "spotify" }]
+      .filter((c, i, arr) => arr.findIndex((x) => chKey(x) === chKey(c)) === i && !chosen.has(chKey(c)));
+    fill(body,
+      h("div", { class: "section" }, h("h3", { text: "Welche Quellen sollen im Mixer erscheinen?" }),
+        h("div", { class: "choice-row" },
+          h("button", { class: "choice" + (m.mode !== "custom" ? " on" : ""), onclick: () => { m.mode = "auto"; render(); } },
+            h("b", { text: "Automatisch" }), h("span", { text: "Alles, was gerade Ton abspielt – kommt und geht von selbst." })),
+          h("button", { class: "choice" + (m.mode === "custom" ? " on" : ""), onclick: () => {
+            m.mode = "custom";
+            if (!m.channels?.length) m.channels = availableChannels().map((c) => ({ ...c }));
+            render();
+          } }, h("b", { text: "Eigene Auswahl" }), h("span", { text: "Du bestimmst, welche Regler da sind und in welcher Reihenfolge." })))),
+      m.mode === "custom" ? [
+        h("div", { class: "section" }, h("h3", { text: `Deine Regler (${(m.channels || []).length})` }),
+          (m.channels || []).length ? null : h("p", { class: "help", text: "Noch keine – unten Quellen hinzufügen." }),
+          (m.channels || []).map((c, i) => h("div", { class: "src-row" },
+            logoFor(c),
+            h("div", { class: "src-main" },
+              h("input", { type: "text", value: c.label || "", placeholder: channelName(c), oninput: (e) => {
+                const v = e.target.value.trim(); if (v) c.label = v; else delete c.label;
+              } }),
+              h("span", { class: "help", text: kindName(c) + (c.kind === "app" ? ` · ${c.app}` : c.kind === "obs" ? ` · ${c.input}` : "") })),
+            h("button", { class: "icon-btn", html: icon("up"), disabled: i === 0, title: "Nach links", onclick: () => { [m.channels[i - 1], m.channels[i]] = [m.channels[i], m.channels[i - 1]]; render(); } }),
+            h("button", { class: "icon-btn", html: icon("down"), disabled: i === m.channels.length - 1, title: "Nach rechts", onclick: () => { [m.channels[i + 1], m.channels[i]] = [m.channels[i], m.channels[i + 1]]; render(); } }),
+            h("button", { class: "icon-btn", html: icon("trash"), title: "Entfernen", onclick: () => { m.channels.splice(i, 1); render(); } })))),
+        h("div", { class: "section" }, h("h3", { text: "Quelle hinzufügen" }),
+          offers.length ? h("div", { class: "src-offers" }, offers.map((c) => h("button", { class: "chip src-chip", onclick: () => {
+            (m.channels ||= []).push({ ...c });
+            render();
+          } }, logoFor(c), h("span", { text: "+ " + channelName(c) })))) : h("p", { class: "help", text: "Alle gerade verfügbaren Quellen sind schon dabei." }),
+          h("p", { class: "help", style: { marginTop: "12px" }, text: "Programm, das gerade nicht läuft (z. B. ein Spiel)? Namen der .exe eintragen – der Regler funktioniert, sobald es Ton abspielt:" }),
+          h("div", { class: "row" }, programInput,
+            h("datalist", { id: "dl-mixer-apps" }, [...new Set([...App.audioApps, "Discord.exe", "chrome.exe", "msedge.exe", "firefox.exe", "steam.exe"])].map((o) => h("option", { value: o }))),
+            h("button", { class: "btn", html: icon("plus") + "Hinzufügen", onclick: () => {
+              let name = programInput.value.trim();
+              if (!name) { toast("Bitte einen Programmnamen eingeben", "error"); return; }
+              if (!/\.exe$/i.test(name)) name += ".exe";
+              const c = { kind: "app", app: name };
+              if ((m.channels || []).some((x) => chKey(x) === chKey(c))) { toast("Ist schon dabei", "error"); return; }
+              (m.channels ||= []).push(c);
+              programInput.value = "";
+              requestAppIcons([{ key: safeKey(name) }]);
+              render();
+            } }))),
+      ] : h("p", { class: "help", text: "Tipp: Mit „Eigene Auswahl“ kannst du Quellen fest hinzufügen, ausblenden, umbenennen und sortieren." }),
+      h("div", { class: "section" }, h("h3", { text: "Breite der Regler" }),
+        h("select", { value: String(m.width || 124), onchange: (e) => { m.width = Number(e.target.value); } },
+          MIXER_WIDTHS.map(([v, l]) => h("option", { value: v, text: l }))),
+        h("p", { class: "help", style: { marginTop: "8px" }, text: "Passen nicht alle Regler auf den Bildschirm, wird der Mixer in Seiten aufgeteilt: einfach nach links/rechts wischen oder unten die Pfeile/Punkte antippen." })),
+    );
+  };
+  const md = openModal({
+    title: `Mixer einrichten – „${page.name}“`, sheet: true, body,
+    footer: [h("div", { class: "spacer" }),
+      h("button", { class: "btn ghost", text: "Abbrechen", onclick: () => md.close() }),
+      h("button", { class: "btn primary", text: "Speichern", onclick: async () => {
+        if (m.mode !== "custom") delete m.channels;
+        if (await saveConfig(cfg, "Mixer gespeichert")) md.close();
+      } })],
+  });
+  render();
 }
 
 /* ================================================================ Bedienung */
@@ -2071,6 +2260,7 @@ function init() {
   $("#btn-fullscreen").innerHTML = icon("full");
   $("#btn-edit").onclick = () => App.config && setEditing(!App.editing);
   $("#btn-done").onclick = () => setEditing(false);
+  $("#btn-mixer-setup").onclick = () => openMixerSetup(App.pageId);
   $("#btn-settings").onclick = () => App.config && openSettings();
   $("#btn-fullscreen").onclick = toggleFullscreen;
 

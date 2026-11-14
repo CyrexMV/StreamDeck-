@@ -143,6 +143,13 @@ wird. 🔊/🔇 unten schaltet stumm. Einzelne Fader legst du auf jede Seite: im
 für einen langen Fader. Dafür müssen die Felder darunter frei sein. Eine weitere Mixer-Seite gibt es unter
 ⚙️ → Seiten → „Mixer-Seite hinzufügen“.
 
+**Mixer einrichten:** Auf der Mixer-Seite ✏️ antippen und **„🎚️ Mixer einrichten“** wählen. Bei **„Automatisch“**
+erscheint alles, was Ton abspielt. Bei **„Eigene Auswahl“** bestimmst du selbst, welche Regler es gibt: Quellen
+hinzufügen (PC, Mikrofon, Spotify-App, jedes Programm, OBS-Quellen oder ein Programm per Name, z. B. ein Spiel),
+entfernen, umbenennen und sortieren. Dort stellst du auch die Breite der Regler ein. Passen nicht alle Regler auf den
+Bildschirm, wird der Mixer in **Seiten** aufgeteilt: waagerecht wischen (auch direkt auf einem Regler) oder unten
+Pfeile/Punkte antippen. Senkrecht ziehen verstellt die Lautstärke.
+
 Seiten, Rastergröße, Abstände und mehr findest du unter **⚙️ Einstellungen**. Dort gibt es unter *Sicherung* auch den
 **Export** und **Import** deiner kompletten Belegung.
 
