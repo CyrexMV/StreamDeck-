@@ -492,13 +492,26 @@ class DeckServer:
     # ---------------------------------------------------------------- Fader
     async def _set_channel(self, ch: dict, value: float) -> None:
         kind = ch.get("kind")
-        if kind in ("master", "mic", "app"):
+        value = max(0.0, min(100.0, value))
+        if kind in ("app", "spotify"):
+            # „Gilt für“: ears = nur du (Windows-Mixer), stream = nur Stream (OBS-Quelle), both = beides
+            scope = ch.get("scope") or ("both" if kind == "spotify" else "ears")
+            app = ch.get("app") or "Spotify.exe"
+            if kind == "spotify" and scope == "both":
+                await self.spotify.set_volume(value)
+                return
+            if scope in ("ears", "both"):
+                if not self.audio.available:
+                    raise ActionError(self.audio.error or "Lautstärkesteuerung nicht verfügbar")
+                await self.audio.apply("app", app, "set", value)
+                self._schedule_audio_refresh()
+            if scope in ("stream", "both"):
+                await self.obs.set_input_volume(self.obs.app_source(app, ch.get("obs_source")), value)
+        elif kind in ("master", "mic"):
             if not self.audio.available:
                 raise ActionError(self.audio.error or "Lautstärkesteuerung nicht verfügbar")
-            await self.audio.apply(kind, ch.get("app", ""), "set", max(0.0, min(100.0, value)))
+            await self.audio.apply(kind, "", "set", value)
             self._schedule_audio_refresh()
-        elif kind == "spotify":
-            await self.spotify.set_volume(value)
         elif kind == "obs":
             await self.obs.set_input_volume(ch.get("input", ""), value)
         else:
@@ -506,11 +519,20 @@ class DeckServer:
 
     async def _mute_channel(self, ch: dict) -> None:
         kind = ch.get("kind")
-        if kind in ("master", "mic", "app"):
-            await self.audio.apply(kind, ch.get("app", ""), "toggle_mute", 0)
+        if kind in ("app", "spotify"):
+            scope = ch.get("scope") or ("both" if kind == "spotify" else "ears")
+            app = ch.get("app") or "Spotify.exe"
+            if kind == "spotify" and scope == "both":
+                await self.spotify.volume("mute_toggle", 0)
+                return
+            if scope in ("ears", "both"):
+                await self.audio.apply("app", app, "toggle_mute", 0)
+                await self.refresh_audio()
+            if scope in ("stream", "both"):
+                await self.obs.stream_volume(self.obs.app_source(app, ch.get("obs_source")), "toggle_mute")
+        elif kind in ("master", "mic"):
+            await self.audio.apply(kind, "", "toggle_mute", 0)
             await self.refresh_audio()
-        elif kind == "spotify":
-            await self.spotify.volume("mute_toggle", 0)
         elif kind == "obs":
             await self.obs.action("mute_toggle", {"input": ch.get("input")})
         else:

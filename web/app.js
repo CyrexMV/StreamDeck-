@@ -93,6 +93,13 @@ const OBS_OPS = [
   ["record_start", "Aufnahme starten"], ["record_stop", "Aufnahme stoppen"], ["stream_start", "Stream starten"], ["stream_stop", "Stream stoppen"],
 ];
 
+const SCOPES = [["ears", "🎧 Nur meine Ohren (Windows-Mixer)"], ["stream", "📡 Nur Stream (OBS-Quelle)"], ["both", "🎧+📡 Beide"]];
+const SPOTIFY_SCOPES = [["both", "🎧+📡 Beide (Regler in der Spotify-App)"], ["ears", "🎧 Nur meine Ohren (Windows-Mixer)"], ["stream", "📡 Nur Stream (OBS-Quelle)"]];
+const SCOPE_HELP = "„Nur meine Ohren“ lässt den Stream unverändert, wenn OBS das Programm über eine <b>Anwendungsaudioaufnahme</b> aufnimmt. „Nur Stream“ regelt genau diese OBS-Quelle.";
+const OBS_SOURCE_FIELD = (show) => ({ k: "obs_source", label: "OBS-Quelle für den Stream (optional)", type: "datalist", source: "obsInputs", show,
+  ph: "automatisch (Anwendungsaudioaufnahme des Programms)",
+  help: "Leer lassen: TabDeck nimmt automatisch die Anwendungsaudioaufnahme in OBS, die dieses Programm aufnimmt." });
+
 const ACTIONS = {
   hotkey: {
     name: "Tastenkombination", group: "Allgemein", defaults: { keys: "", mode: "press" },
@@ -135,6 +142,9 @@ const ACTIONS = {
         ["shuffle", "Zufallswiedergabe an/aus"], ["repeat", "Wiederholen umschalten"]] },
       { k: "step", label: "Schritt in %", type: "number", min: 1, max: 100, show: (a) => a.op === "volume_up" || a.op === "volume_down" },
       { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "volume_set" },
+      { k: "scope", label: "Gilt für", type: "select", options: SPOTIFY_SCOPES, help: SCOPE_HELP,
+        show: (a) => ["volume_up", "volume_down", "volume_set", "mute_toggle"].includes(a.op) },
+      OBS_SOURCE_FIELD((a) => ["volume_up", "volume_down", "volume_set", "mute_toggle"].includes(a.op) && a.scope === "stream"),
       { k: "link", label: "Spotify-Link", type: "spotifylink", show: (a) => a.op === "play_link",
         help: "In Spotify beim Song (oder Album/Playlist) auf „⋯ → Teilen → Link kopieren“ tippen und hier einfügen." },
       { k: "enqueue", label: "Nur zur Warteschlange hinzufügen (statt sofort abspielen)", type: "checkbox", show: (a) => a.op === "play_link" },
@@ -142,7 +152,7 @@ const ACTIONS = {
       { k: "_hint2", type: "info", show: (a) => a.op === "play_link",
         html: "Spielt über dein Spotify-Konto ab – dafür Spotify unter ⚙️ → Spotify verbinden (Spotify verlangt Premium). Ohne wird der Song in der Spotify-App am PC geöffnet." },
       { k: "_hint", type: "info", show: (a) => ["volume_up", "volume_down", "volume_set", "mute_toggle", "like"].includes(a.op),
-        html: "Ändert die Lautstärke <b>direkt in der Spotify-App</b>. Dafür einmalig unter ⚙️ Einstellungen → Spotify verbinden (Spotify Premium nötig)." },
+        html: "Bei „Beide“ ändert TabDeck den Regler <b>direkt in der Spotify-App</b> – dafür einmalig unter ⚙️ → Spotify verbinden (Premium nötig)." },
     ],
   },
   volume: {
@@ -152,6 +162,8 @@ const ACTIONS = {
       { k: "app", label: "Programm", type: "datalist", source: "audioApps", ph: "z. B. Spotify.exe", show: (a) => a.target === "app",
         help: "Programme erscheinen in der Liste, sobald sie Ton abspielen. Du kannst den Namen auch eintippen (z. B. Discord.exe, chrome.exe)." },
       { k: "op", label: "Funktion", type: "select", options: [["up", "Lauter"], ["down", "Leiser"], ["set", "Auf festen Wert setzen"], ["toggle_mute", "Stumm an/aus"], ["mute", "Stumm schalten"], ["unmute", "Stumm aufheben"]] },
+      { k: "scope", label: "Gilt für", type: "select", options: SCOPES, show: (a) => a.target === "app", help: SCOPE_HELP },
+      OBS_SOURCE_FIELD((a) => a.target === "app" && (a.scope === "stream" || a.scope === "both")),
       { k: "step", label: "Schritt in %", type: "number", min: 1, max: 100, show: (a) => a.op === "up" || a.op === "down" },
       { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "set" },
     ],
@@ -194,7 +206,6 @@ const ACTIONS = {
   home: { name: "Zur ersten Seite", group: "Navigation", defaults: {}, fields: [] },
 };
 const CLIENT_ACTIONS = new Set(["page", "back", "home"]);
-
 const WIDGETS = [["", "Keine (normale Taste)"], ["clock", "Uhr"], ["cpu", "CPU-Auslastung"], ["ram", "Arbeitsspeicher"],
   ["volume", "PC-Lautstärke (Anzeige)"], ["nowplaying", "Läuft gerade (Cover)"], ["fader", "🎚️ Schiebefader (Lautstärke)"]];
 const SIZES = [["1x1", "1 × 1 (normal)"], ["1x2", "1 breit × 2 hoch"], ["1x3", "1 breit × 3 hoch"], ["1x4", "1 breit × 4 hoch"],
@@ -204,6 +215,9 @@ const FADER_FIELDS = [
     ["spotify", "Spotify-App (echte App-Lautstärke)"], ["app", "Einzelnes Programm (Windows-Mixer)"], ["obs", "OBS-Audioquelle"]] },
   { k: "app", label: "Programm", type: "datalist", source: "audioApps", ph: "z. B. Discord.exe", show: (a) => a.target === "app",
     help: "Programme erscheinen in der Liste, sobald sie Ton abspielen. Name auch eintippbar (z. B. Discord.exe, chrome.exe)." },
+  { k: "scope", label: "Gilt für", type: "select", options: SCOPES, show: (a) => a.target === "app", help: SCOPE_HELP },
+  { k: "scope", label: "Gilt für", type: "select", options: SPOTIFY_SCOPES, show: (a) => a.target === "spotify", help: SCOPE_HELP },
+  OBS_SOURCE_FIELD((a) => (a.target === "app" || a.target === "spotify") && (a.scope === "stream" || (a.target === "app" && a.scope === "both"))),
   { k: "input", label: "OBS-Audioquelle", type: "datalist", source: "obsActive", show: (a) => a.target === "obs",
     help: "Zur Auswahl stehen die Quellen, die gerade in deinem OBS-Audio-Mixer aktiv sind." },
   { k: "_hint", type: "info", show: (a) => a.target === "spotify", html: "Benötigt die Spotify-Verbindung unter ⚙️ Einstellungen → Spotify (Premium)." },
@@ -602,6 +616,7 @@ function actionActive(a) {
     }
     case "volume": {
       if (!["toggle_mute", "mute", "unmute"].includes(a.op)) return null;
+      if (a.target === "app" && a.scope === "stream") return !!obsAppState(a.app, a.obs_source).muted;
       const t = a.target === "app" ? (au.apps || {})[appKey(a.app)] : au[a.target];
       return !!(t && t.muted);
     }
@@ -615,7 +630,10 @@ function actionActive(a) {
         if (!link || !sp.playing) return false;
         return ["track", "episode"].includes(link.kind) ? sp.track_id === link.id : sp.context === `spotify:${link.kind}:${link.id}`;
       }
-      if (a.op === "mute_toggle") return st.spotify?.volume === 0;
+      if (a.op === "mute_toggle") {
+        if (a.scope === "ears" || a.scope === "stream") return !!channelState({ kind: "spotify", scope: a.scope, obs_source: a.obs_source }).muted;
+        return st.spotify?.volume === 0;
+      }
       return null;
     case "media":
       return a.op === "play_pause" ? !!m.playing : null;
@@ -642,8 +660,12 @@ function isActive(btn, pageId, slot) {
 function valueText(btn) {
   const a = (btn.actions || [])[0];
   if (a && a.type === "spotify" && /^volume_/.test(a.op || "")) {
-    const v = App.state.spotify?.volume;
+    const v = channelState({ kind: "spotify", scope: a.scope, obs_source: a.obs_source }).level;
     return v != null ? `${v}%` : "";
+  }
+  if (a && a.type === "volume" && a.target === "app" && a.scope === "stream" && ["up", "down", "set"].includes(a.op)) {
+    const v = obsAppState(a.app, a.obs_source).level;
+    return v != null ? `📡 ${v}%` : "";
   }
   if (!a || a.type !== "volume" || !["up", "down", "set"].includes(a.op)) return "";
   const au = App.state.audio || {};
@@ -853,7 +875,7 @@ const APP_NAMES = { spotify: "Spotify", discord: "Discord", chrome: "Chrome", ms
 const APP_ICONS = { spotify: "🎧", discord: "💬", chrome: "🌐", msedge: "🌐", firefox: "🌐", opera: "🌐", brave: "🌐",
   obs64: "🎬", steam: "🎮", steamwebhelper: "🎮", "ms-teams": "📞", teams: "📞", zoom: "📞", vlc: "🎞️", wmplayer: "🎞️" };
 const prettyApp = (name) => { const k = appKey(name); return APP_NAMES[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : "Programm"); };
-const chKey = (ch) => `${ch.kind}:${ch.kind === "app" ? appKey(ch.app) : ch.input || ""}`;
+const chKey = (ch) => `${ch.kind}:${ch.kind === "app" ? appKey(ch.app) : ch.input || ""}${ch.scope ? "|" + ch.scope : ""}`;
 const dbToPct = (db) => (db == null || db <= -60 ? 0 : Math.round(100 + db / 0.6));
 const pctToDb = (p) => (p <= 0 ? -100 : Math.round((p - 100) * 6) / 10);
 const fmtDb = (db) => (db <= -60 ? "−∞ dB" : `${db.toFixed(1).replace("-", "−")} dB`);
@@ -861,9 +883,12 @@ const fmtDb = (db) => (db <= -60 ? "−∞ dB" : `${db.toFixed(1).replace("-", "
 function faderChannel(btn) {
   const f = btn.fader || {};
   const kind = f.target || "master";
-  if (kind === "app") return { kind, app: f.app || "" };
+  const extra = {};
+  if ((kind === "app" || kind === "spotify") && f.scope) extra.scope = f.scope;
+  if ((kind === "app" || kind === "spotify") && f.obs_source) extra.obs_source = f.obs_source;
+  if (kind === "app") return { kind, app: f.app || "", ...extra };
   if (kind === "obs") return { kind, input: f.input || "" };
-  return { kind };
+  return { kind, ...extra };
 }
 
 function channelName(ch) {
@@ -880,11 +905,14 @@ function channelState(ch) {
       return t ? { level: t.level, muted: t.muted } : { level: null, note: ch.kind === "mic" ? "kein Mikrofon" : "–" };
     }
     case "app": {
+      if ((ch.scope || "ears") === "stream") return obsAppState(ch.app, ch.obs_source);
       if (au.available === false) return { level: null, note: "nur unter Windows" };
       const t = (au.apps || {})[appKey(ch.app)];
       return t ? { level: t.level, muted: t.muted } : { level: null, note: "spielt keinen Ton" };
     }
     case "spotify": {
+      if (ch.scope === "ears") return channelState({ kind: "app", app: "Spotify.exe" });
+      if (ch.scope === "stream") return obsAppState("Spotify.exe", ch.obs_source);
       const sp = st.spotify || {};
       if (!sp.connected) return { level: null, note: "nicht verbunden" };
       if (sp.volume == null) return { level: null, note: "kein Gerät aktiv" };
@@ -899,6 +927,21 @@ function channelState(ch) {
     }
   }
   return { level: null, note: "?" };
+}
+
+/* Stream-Lautstärke eines Programms = Fader seiner OBS-Anwendungsaudioaufnahme */
+function obsSourceForApp(app, override) {
+  const o = App.state.obs || {};
+  return override || (o.app_sources || {})[appKey(app)] || null;
+}
+function obsAppState(app, override) {
+  const o = App.state.obs || {};
+  if (!o.connected) return { level: null, note: "OBS getrennt" };
+  const name = obsSourceForApp(app, override);
+  if (!name) return { level: null, note: "keine OBS-Quelle" };
+  const db = (o.volumes || {})[name];
+  if (db == null) return { level: null, note: "Quelle fehlt" };
+  return { level: dbToPct(db), muted: !!(o.muted || {})[name] };
 }
 
 function channelView(ch) {
@@ -925,7 +968,7 @@ function faderHTML(ch, { label, icon, logo = null, track = null, vertical, compa
   const meter = ch.kind === "obs" ? `;--m:${App.meters[ch.input] || 0}%` : "";
   return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%${meter}">` +
     `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">`
-      : String(icon).startsWith("sym:") ? symbolHTML(icon.slice(4), false, "f-sym") : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span>${compact ? "" : trackHTML(track, "f-song")}</div>` +
+      : String(icon).startsWith("sym:") ? symbolHTML(icon.slice(4), false, "f-sym") : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span>${ch.scope && !compact ? `<span class="f-scope">${{ ears: "🎧 nur Ohren", stream: "📡 nur Stream", both: "🎧+📡 beide" }[ch.scope] || ""}</span>` : ""}${compact ? "" : trackHTML(track, "f-song")}</div>` +
     `<div class="f-track">${ch.kind === "obs" ? '<div class="f-meter"></div>' : ""}<div class="f-fill"></div><div class="f-knob"></div></div>` +
     `<div class="f-foot"><span class="f-val">${esc(faderValueText(ch, v))}</span>` +
     (v.level == null ? "" : `<button class="f-mute" type="button" aria-label="Stumm schalten">${muteIco}</button>`) + `</div></div>`;
@@ -1064,18 +1107,21 @@ function obsActiveInputs() {
 /* Kanal mit Anzeigename und Symbol versehen */
 function decorateChannel(c) {
   const core = c.kind === "app" ? { kind: "app", app: c.app || "" } : c.kind === "obs" ? { kind: "obs", input: c.input || "" } : { kind: c.kind };
+  if ((c.kind === "app" || c.kind === "spotify") && c.scope) core.scope = c.scope;
+  if ((c.kind === "app" || c.kind === "spotify") && c.obs_source) core.obs_source = c.obs_source;
   const icon = { master: "sym:speaker", mic: "sym:mic", spotify: "🎧", obs: "🎬" }[c.kind] || APP_ICONS[safeKey(c.app)] || "🔊";
   return { ...core, label: c.label || channelName(core), icon, group: c.kind === "obs" ? "obs" : undefined };
 }
 
 function mixerChannels(page) {
   const m = page?.mixer || {};
-  if (m.mode === "custom") return (m.channels || []).map(decorateChannel);
+  const withScope = (c) => (m.scope && !c.scope && (c.kind === "app" || c.kind === "spotify") ? { ...c, scope: m.scope } : c);
+  if (m.mode === "custom") return (m.channels || []).map(withScope).map(decorateChannel);
   if (m.mode === "obs") {
     const hidden = new Set(m.hidden || []);
     return obsActiveInputs().filter((n) => !hidden.has(n)).map((input) => ({ ...decorateChannel({ kind: "obs", input }), group: undefined }));
   }
-  return availableChannels().map(decorateChannel);
+  return availableChannels().map(withScope).map(decorateChannel);
 }
 
 function stripHTML(ch) {
@@ -1103,7 +1149,7 @@ function renderMixer(full) {
   const chans = mixerChannels(page);
   const width = grid.clientWidth || $("#deck").clientWidth;
   const geo = mixerGeometry(width, chans.length, Number(page.mixer?.width) || 124);
-  const sig = `${page.id}|${geo.perPage}|${Math.round(geo.stripW)}|` + chans.map((c) => chKey(c) + "=" + c.label).join("|");
+  const sig = `${page.id}|${geo.perPage}|${Math.round(geo.stripW)}|${page.mixer?.scope || ""}|` + chans.map((c) => chKey(c) + "=" + c.label).join("|");
 
   if (full || grid._sig !== sig) {
     const oldScroll = grid.querySelector(".mixer-scroll");
@@ -1129,9 +1175,19 @@ function renderMixer(full) {
           : "Gerade spielt nichts Ton ab." }));
     }
     const nav = geo.pages > 1 ? mixerNav(scroll, geo) : null;
+    const hasApps = page.mixer?.mode !== "obs" && chans.some((c) => c.kind === "app" || c.kind === "spotify");
+    const scopeBar = hasApps ? h("div", { class: "mixer-scope" }, h("span", { text: "Programm-Regler wirken auf:" }),
+      [["", "Standard"], ["ears", "🎧 Meine Ohren"], ["stream", "📡 Stream"], ["both", "🎧+📡 Beide"]].map(([v, l]) =>
+        h("button", { class: "chip" + ((page.mixer?.scope || "") === v ? " on" : ""), text: l, onclick: () => {
+          const cfg = clone(App.config);
+          const pg = cfg.pages.find((x) => x.id === page.id);
+          pg.mixer ||= {};
+          if (v) pg.mixer.scope = v; else delete pg.mixer.scope;
+          saveConfig(cfg, v ? `Mixer regelt jetzt: ${l}` : "Mixer regelt wieder wie Standard");
+        } }))) : null;
     const note = App.state.audio?.available === false
       ? h("div", { class: "mixer-note small", text: "Programm-Lautstärken gibt es nur, wenn TabDeck unter Windows läuft." }) : null;
-    fill(grid, scroll, nav, note);
+    fill(grid, scopeBar, scroll, nav, note);
     scroll.scrollLeft = Math.min(keepScroll, scroll.scrollWidth);
     scroll.addEventListener("scroll", () => {
       App.mixerScroll[page.id] = scroll.scrollLeft;
@@ -1241,7 +1297,10 @@ function openMixerSetup(pageId) {
               h("input", { type: "text", value: c.label || "", placeholder: channelName(c), oninput: (e) => {
                 const v = e.target.value.trim(); if (v) c.label = v; else delete c.label;
               } }),
-              h("span", { class: "help", text: kindName(c) + (c.kind === "app" ? ` · ${c.app}` : c.kind === "obs" ? ` · ${c.input}` : "") })),
+              h("span", { class: "help", text: kindName(c) + (c.kind === "app" ? ` · ${c.app}` : c.kind === "obs" ? ` · ${c.input}` : "") }),
+              c.kind === "app" || c.kind === "spotify" ? h("select", { class: "scope-select", value: c.scope || "", onchange: (e) => {
+                if (e.target.value) c.scope = e.target.value; else delete c.scope;
+              } }, [["", "Wirkt: wie oben eingestellt (Standard)"], ...(c.kind === "spotify" ? SPOTIFY_SCOPES : SCOPES)].map(([v, l]) => h("option", { value: v, text: l }))) : null),
             h("button", { class: "icon-btn", html: icon("up"), disabled: i === 0, title: "Nach links", onclick: () => { [m.channels[i - 1], m.channels[i]] = [m.channels[i], m.channels[i - 1]]; render(); } }),
             h("button", { class: "icon-btn", html: icon("down"), disabled: i === m.channels.length - 1, title: "Nach rechts", onclick: () => { [m.channels[i + 1], m.channels[i]] = [m.channels[i], m.channels[i + 1]]; render(); } }),
             h("button", { class: "icon-btn", html: icon("trash"), title: "Entfernen", onclick: () => { m.channels.splice(i, 1); render(); } })))),

@@ -46,6 +46,7 @@ AUDIO_SETTING_KINDS = {
 }
 
 
+APP_CAPTURE_KIND = "wasapi_process_output_capture"
 SOUND_INPUT = "TabDeck Sounds"
 SOUND_GAIN_FILTER = "TabDeck Lautstärke"
 MEDIA_STATES = {
@@ -88,6 +89,7 @@ class OBSClient:
             "volumes": {},
             "active_inputs": [],      # Quellen, die gerade im OBS-Audio-Mixer aktiv sind
             "active_known": False,    # False, solange OBS noch keine Pegel gemeldet hat
+            "app_sources": {},        # Programm (z. B. "spotify") -> OBS-Anwendungsaudioaufnahme
             "sources": {},
             "recording": False,
             "record_paused": False,
@@ -316,6 +318,9 @@ class OBSClient:
         self._kinds = {i["inputName"]: i.get("unversionedInputKind") or i.get("inputKind") or "" for i in data.get("inputs", [])}
         await asyncio.gather(*(self._load_audio_setting(n) for n in names if self._kinds.get(n) in AUDIO_SETTING_KINDS),
                              return_exceptions=True)
+        self.state["app_sources"] = {}
+        await asyncio.gather(*(self._load_app_source(n) for n in names if self._kinds.get(n) == APP_CAPTURE_KIND),
+                             return_exceptions=True)
 
         async def mute_state(name: str):
             try:
@@ -337,6 +342,53 @@ class OBSClient:
         self.state["volumes"] = {n: v for n, v in vols if v is not None}
         self._update_active()
         self._notify()
+
+    async def _load_app_source(self, name: str) -> None:
+        """Anwendungsaudioaufnahme: welches Programm nimmt sie auf? (Einstellung „window“ = „Titel:Klasse:programm.exe“)"""
+        settings = (await self.request("GetInputSettings", {"inputName": name})).get("inputSettings") or {}
+        exe = str(settings.get("window", "")).rsplit(":", 1)[-1].strip().lower()
+        if exe.endswith(".exe"):
+            exe = exe[:-4]
+        sources = {k: v for k, v in self.state["app_sources"].items() if v != name}
+        if exe:
+            sources.setdefault(exe, name)
+        self.state["app_sources"] = sources
+        self._notify()
+
+    def app_source(self, app: str, override: str | None = None) -> str:
+        """OBS-Quelle, die das Programm für den Stream aufnimmt."""
+        if override:
+            if override not in self.state["volumes"]:
+                raise OBSError(f"OBS-Quelle „{override}“ nicht gefunden")
+            return override
+        key = (app or "").lower().removesuffix(".exe")
+        name = self.state["app_sources"].get(key)
+        if not name:
+            raise OBSError(f"In OBS gibt es keine Anwendungsaudioaufnahme für „{app}“. In OBS: Quellen → + → "
+                           f"„Anwendungsaudioaufnahme“ → Fenster von {app} wählen (oder im Editor die OBS-Quelle angeben).")
+        return name
+
+    async def stream_volume(self, source: str, op: str, step: float = 5) -> None:
+        """Lautstärke nur für den Stream: Fader der OBS-Quelle (0–100 % wie im TabDeck-Mixer)."""
+        if not self.state.get("connected"):
+            raise OBSError("OBS ist nicht verbunden – „Nur Stream“ braucht OBS")
+        db = self.state["volumes"].get(source, 0.0)
+        current = 0 if db <= -60 else round(100 + db / 0.6)
+        step = float(step or 5)
+        if op == "up":
+            await self.set_input_volume(source, min(100, current + step))
+            if self.state["muted"].get(source):
+                await self.request("SetInputMute", {"inputName": source, "inputMuted": False})
+        elif op == "down":
+            await self.set_input_volume(source, max(0, current - step))
+        elif op == "set":
+            await self.set_input_volume(source, step)
+        elif op in ("toggle_mute", "mute_toggle"):
+            await self.request("ToggleInputMute", {"inputName": source})
+        elif op in ("mute", "unmute"):
+            await self.request("SetInputMute", {"inputName": source, "inputMuted": op == "mute"})
+        else:
+            raise OBSError(f"Unbekannte Lautstärke-Aktion: {op}")
 
     async def _load_audio_setting(self, name: str) -> None:
         key = AUDIO_SETTING_KINDS[self._kinds[name]]
@@ -398,6 +450,9 @@ class OBSClient:
         elif event == "InputSettingsChanged":
             name = data.get("inputName")
             kind = self._kinds.get(name)
+            if kind == APP_CAPTURE_KIND:
+                asyncio.create_task(self._safe(self._load_app_source(name)))
+                return
             if kind in AUDIO_SETTING_KINDS:
                 settings = data.get("inputSettings") or {}
                 if AUDIO_SETTING_KINDS[kind] in settings:

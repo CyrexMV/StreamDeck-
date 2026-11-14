@@ -173,6 +173,17 @@ auch hier aus. OBS gibt diese Einstellung nicht weiter. Wechselst du die Szene, 
 automatisch an. Fehlt die Seite, gibt es sie unter ⚙️ → OBS → „OBS-Mixer-Seite hinzufügen“. Auch beim Hinzufügen
 einzelner OBS-Fader (Kachel oder „Mixer einrichten“) werden nur die aktiven OBS-Quellen angeboten.
 
+**Nur für mich, nur für den Stream oder beides:** Bei Programm-Lautstärken (Spotify, Discord, Spiele …) wählst du unter
+**„Gilt für“**, was sich ändern soll:
+- **🎧 Nur meine Ohren:** Windows-Mixer. Der Stream bleibt gleich, wenn OBS das Programm über eine
+  **Anwendungsaudioaufnahme** aufnimmt.
+- **📡 Nur Stream:** der Fader der OBS-Anwendungsaudioaufnahme dieses Programms. Du hörst es unverändert.
+- **🎧+📡 Beide:** beides. Bei Spotify ist das der Regler direkt in der Spotify-App.
+
+Die passende OBS-Quelle erkennt TabDeck automatisch (Anwendungsaudioaufnahme, die z. B. auf `Spotify.exe` eingestellt
+ist). Bei Bedarf trägst du sie im Editor von Hand ein. Im Mixer schaltest du das oben für alle Programm-Regler um
+(„Programm-Regler wirken auf“), unter „Mixer einrichten“ auch pro Regler.
+
 **Mixer einrichten:** Auf der Mixer-Seite ✏️ antippen und **„🎚️ Mixer einrichten“** wählen. Bei **„Automatisch“**
 erscheint alles, was Ton abspielt. Bei **„Eigene Auswahl“** bestimmst du selbst, welche Regler es gibt: Quellen
 hinzufügen (PC, Mikrofon, Spotify-App, jedes Programm, OBS-Quellen oder ein Programm per Name, z. B. ein Spiel),

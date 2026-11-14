@@ -476,3 +476,9 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .sp-info b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-info span { font-size: 13px; color: var(--muted); }
 .sp-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ------------------------------------------------ Ohren / Stream */
+.f-scope { font-size: calc(var(--cell) * .07); font-weight: 700; opacity: .8; white-space: nowrap; }
+.mixer-scope { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.mixer-scope .chip { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.scope-select { min-height: 36px; padding: 6px 8px; font-size: 13px; }

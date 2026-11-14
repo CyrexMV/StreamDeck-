@@ -101,8 +101,18 @@ class ActionRunner:
         if op == "play_link":
             return await self._spotify_link(a)
         if op in ("volume_up", "volume_down", "volume_set", "mute_toggle"):
-            # Echte Lautstärke in der Spotify-App (nicht Windows-Mixer)
-            await sp.volume(op, a.get("step", 50 if op == "volume_set" else 10))
+            step = a.get("step", 50 if op == "volume_set" else 10)
+            scope = a.get("scope") or "both"
+            if scope == "both":
+                # Regler in der Spotify-App: wirkt auf dich und den Stream
+                await sp.volume(op, step)
+                return
+            vop = {"volume_up": "up", "volume_down": "down", "volume_set": "set", "mute_toggle": "toggle_mute"}[op]
+            if scope == "ears":  # nur was du hörst: Windows-Mixer
+                await self.s.audio.apply("app", "Spotify.exe", vop, step)
+                await self.s.refresh_audio()
+            else:  # nur Stream: OBS-Quelle, die Spotify aufnimmt
+                await self.s.obs.stream_volume(self.s.obs.app_source("Spotify.exe", a.get("obs_source")), vop, step)
             return
         if op == "like":
             await sp.toggle_like()
@@ -140,6 +150,16 @@ class ActionRunner:
         op = a.get("op", "toggle_mute")
         step = a.get("step", 5 if op != "set" else 50)
         audio = self.s.audio
+        scope = a.get("scope") or "ears"
+        if target == "app" and scope in ("stream", "both"):
+            source = self.s.obs.app_source(a.get("app", ""), a.get("obs_source"))
+            if scope == "stream":
+                await self.s.obs.stream_volume(source, op, step)
+                return
+            await audio.apply(target, a.get("app", ""), op, step)
+            await self.s.obs.stream_volume(source, op, step)
+            await self.s.refresh_audio()
+            return
         if audio.available:
             await audio.apply(target, a.get("app", ""), op, step)
             await self.s.refresh_audio()
