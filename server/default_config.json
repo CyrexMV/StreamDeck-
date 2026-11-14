@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "settings": {
     "columns": 8,
     "rows": 4,
@@ -595,6 +595,15 @@
           ]
         }
       }
+    },
+    {
+      "id": "obs-mixer",
+      "name": "OBS-Mixer",
+      "type": "mixer",
+      "mixer": {
+        "mode": "obs"
+      },
+      "buttons": {}
     },
     {
       "id": "discord",

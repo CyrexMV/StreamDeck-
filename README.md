@@ -143,6 +143,11 @@ wird. 🔊/🔇 unten schaltet stumm. Einzelne Fader legst du auf jede Seite: im
 für einen langen Fader. Dafür müssen die Felder darunter frei sein. Eine weitere Mixer-Seite gibt es unter
 ⚙️ → Seiten → „Mixer-Seite hinzufügen“.
 
+**OBS-Mixer:** Der Reiter **„OBS-Mixer“** zeigt für jede Quelle, die in deinem **OBS-Audio-Mixer gerade aktiv** ist,
+einen Fader mit Pegelanzeige, so wie der Mixer in OBS selbst. Wechselst du die Szene, passen sich die Fader
+automatisch an. Fehlt die Seite, gibt es sie unter ⚙️ → OBS → „OBS-Mixer-Seite hinzufügen“. Auch beim Hinzufügen
+einzelner OBS-Fader (Kachel oder „Mixer einrichten“) werden nur die aktiven OBS-Quellen angeboten.
+
 **Mixer einrichten:** Auf der Mixer-Seite ✏️ antippen und **„🎚️ Mixer einrichten“** wählen. Bei **„Automatisch“**
 erscheint alles, was Ton abspielt. Bei **„Eigene Auswahl“** bestimmst du selbst, welche Regler es gibt: Quellen
 hinzufügen (PC, Mikrofon, Spotify-App, jedes Programm, OBS-Quellen oder ein Programm per Name, z. B. ein Spiel),

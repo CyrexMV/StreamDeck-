@@ -449,3 +449,18 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .src-chip .src-logo { width: 26px; height: 26px; font-size: 20px; }
 .src-chip .f-sym { width: 24px; height: 24px; }
 #edithint .btn { white-space: nowrap; }
+
+/* ------------------------------------------------- OBS-Pegelanzeige */
+.f-meter {
+  position: absolute; top: 0; bottom: 0; left: calc(100% + 6px); width: 7px; border-radius: 4px; overflow: hidden;
+  background: linear-gradient(to top, #2ecc71 0%, #2ecc71 62%, #f1c40f 80%, #e74c3c 96%);
+}
+.f-meter::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: calc(100% - var(--m, 0%));
+  background: rgba(10,12,16,.82); transition: height .08s linear;
+}
+.fader.h .f-meter { top: calc(100% + 5px); bottom: auto; left: 0; right: 0; width: auto; height: 6px;
+  background: linear-gradient(to right, #2ecc71 0%, #2ecc71 62%, #f1c40f 80%, #e74c3c 96%); }
+.fader.h .f-meter::after { top: 0; bottom: 0; left: auto; right: 0; height: auto; width: calc(100% - var(--m, 0%)); }
+.fader.muted .f-meter { opacity: .35; }
+.choice-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }

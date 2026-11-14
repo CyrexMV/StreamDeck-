@@ -183,7 +183,8 @@ const FADER_FIELDS = [
     ["spotify", "Spotify-App (echte App-Lautstärke)"], ["app", "Einzelnes Programm (Windows-Mixer)"], ["obs", "OBS-Audioquelle"]] },
   { k: "app", label: "Programm", type: "datalist", source: "audioApps", ph: "z. B. Discord.exe", show: (a) => a.target === "app",
     help: "Programme erscheinen in der Liste, sobald sie Ton abspielen. Name auch eintippbar (z. B. Discord.exe, chrome.exe)." },
-  { k: "input", label: "OBS-Audioquelle", type: "datalist", source: "obsInputs", show: (a) => a.target === "obs" },
+  { k: "input", label: "OBS-Audioquelle", type: "datalist", source: "obsActive", show: (a) => a.target === "obs",
+    help: "Zur Auswahl stehen die Quellen, die gerade in deinem OBS-Audio-Mixer aktiv sind." },
   { k: "_hint", type: "info", show: (a) => a.target === "spotify", html: "Benötigt die Spotify-Verbindung unter ⚙️ Einstellungen → Spotify (Premium)." },
 ];
 
@@ -268,6 +269,7 @@ const App = {
   faderDrag: null,
   faderLocal: {},
   mixerScroll: {},
+  meters: {},
   moveFrom: null,
   rpcSeq: 0,
   rpcPending: new Map(),
@@ -365,6 +367,12 @@ function onMessage(msg) {
         }
       }
       break;
+    case "meters":
+      App.meters = msg.obs || {};
+      for (const f of document.querySelectorAll('.fader[data-key^="obs:"]')) {
+        f.style.setProperty("--m", `${App.meters[JSON.parse(f.dataset.ch).input] || 0}%`);
+      }
+      break;
     case "rpc_result": {
       const p = App.rpcPending.get(msg.id);
       if (!p) break;
@@ -459,7 +467,8 @@ function renderGrid() {
   document.body.classList.toggle("moving", App.moveFrom !== null);
   $("#edithint").hidden = !App.editing;
   $("#edithint span").textContent = page.type === "mixer"
-    ? (page.mixer?.mode === "custom" ? "Eigener Mixer – mit „Mixer einrichten“ Quellen hinzufügen, entfernen und sortieren."
+    ? (page.mixer?.mode === "obs" ? "OBS-Mixer – zeigt automatisch alle Quellen, die in deinem OBS-Audio-Mixer aktiv sind."
+      : page.mixer?.mode === "custom" ? "Eigener Mixer – mit „Mixer einrichten“ Quellen hinzufügen, entfernen und sortieren."
       : "Der Mixer zeigt automatisch alles, was Ton abspielt. Mit „Mixer einrichten“ wählst du die Quellen selbst.")
     : App.moveFrom !== null
       ? "Tippe auf das Ziel-Feld, um die Taste dorthin zu verschieben."
@@ -874,10 +883,11 @@ function faderHTML(ch, { label, icon, logo = null, track = null, vertical, compa
   const lvl = v.level ?? 0;
   const muteIco = symbolHTML(ch.kind === "mic" || (ch.kind === "obs" && MIC_NAME.test(ch.input || "")) ? "mic" : "speaker", !!v.muted, "sym-small");
   const cls = `fader ${vertical ? "v" : "h"}${compact ? " compact" : ""}${v.muted ? " muted" : ""}${v.level == null ? " off" : ""}${App.faderDrag === key ? " dragging" : ""}`;
-  return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%">` +
+  const meter = ch.kind === "obs" ? `;--m:${App.meters[ch.input] || 0}%` : "";
+  return `<div class="${cls}" data-key="${esc(key)}" data-ch="${esc(JSON.stringify(ch))}" data-label="${esc(label)}" style="--v:${lvl}%${meter}">` +
     `<div class="f-head">${logo ? `<img class="f-logo" src="${esc(logo)}" alt="" draggable="false">`
       : String(icon).startsWith("sym:") ? symbolHTML(icon.slice(4), false, "f-sym") : `<span class="f-icon">${esc(icon)}</span>`}<span class="f-label">${esc(label)}</span>${compact ? "" : trackHTML(track, "f-song")}</div>` +
-    `<div class="f-track"><div class="f-fill"></div><div class="f-knob"></div></div>` +
+    `<div class="f-track">${ch.kind === "obs" ? '<div class="f-meter"></div>' : ""}<div class="f-fill"></div><div class="f-knob"></div></div>` +
     `<div class="f-foot"><span class="f-val">${esc(faderValueText(ch, v))}</span>` +
     (v.level == null ? "" : `<button class="f-mute" type="button" aria-label="Stumm schalten">${muteIco}</button>`) + `</div></div>`;
 }
@@ -1000,11 +1010,16 @@ function availableChannels() {
     if (k === "spotify" && spotifyApi) continue; // echte Spotify-App-Lautstärke wird schon angezeigt
     list.push({ kind: "app", app: a.name });
   }
-  const o = st.obs || {};
-  if (o.connected) for (const input of o.inputs || []) {
-    if ((o.volumes || {})[input] != null) list.push({ kind: "obs", input });
-  }
+  for (const input of obsActiveInputs()) list.push({ kind: "obs", input });
   return list;
+}
+
+/* Quellen, die gerade im OBS-Audio-Mixer aktiv sind (meldet OBS laufend über die Pegel) */
+function obsActiveInputs() {
+  const o = App.state.obs || {};
+  if (!o.connected) return [];
+  const names = o.active_known ? o.active_inputs || [] : o.inputs || [];
+  return names.filter((n) => (o.volumes || {})[n] != null);
 }
 
 /* Kanal mit Anzeigename und Symbol versehen */
@@ -1017,6 +1032,7 @@ function decorateChannel(c) {
 function mixerChannels(page) {
   const m = page?.mixer || {};
   if (m.mode === "custom") return (m.channels || []).map(decorateChannel);
+  if (m.mode === "obs") return obsActiveInputs().map((input) => ({ ...decorateChannel({ kind: "obs", input }), group: undefined }));
   return availableChannels().map(decorateChannel);
 }
 
@@ -1066,7 +1082,9 @@ function renderMixer(full) {
     if (!chans.length) {
       scroll.append(h("div", { class: "mixer-note", text: page.mixer?.mode === "custom"
         ? "Noch keine Quellen ausgewählt – ✏️ antippen und „Mixer einrichten“ wählen."
-        : "Gerade spielt nichts Ton ab." }));
+        : page.mixer?.mode === "obs"
+          ? (App.state.obs?.connected ? "In deinem OBS-Audio-Mixer ist gerade keine Quelle aktiv." : "OBS ist nicht verbunden – ⚙️ Einstellungen → OBS.")
+          : "Gerade spielt nichts Ton ab." }));
     }
     const nav = geo.pages > 1 ? mixerNav(scroll, geo) : null;
     const note = App.state.audio?.available === false
@@ -1145,13 +1163,20 @@ function openMixerSetup(pageId) {
     fill(body,
       h("div", { class: "section" }, h("h3", { text: "Welche Quellen sollen im Mixer erscheinen?" }),
         h("div", { class: "choice-row" },
-          h("button", { class: "choice" + (m.mode !== "custom" ? " on" : ""), onclick: () => { m.mode = "auto"; render(); } },
+          h("button", { class: "choice" + (!m.mode || m.mode === "auto" ? " on" : ""), onclick: () => { m.mode = "auto"; render(); } },
             h("b", { text: "Automatisch" }), h("span", { text: "Alles, was gerade Ton abspielt – kommt und geht von selbst." })),
           h("button", { class: "choice" + (m.mode === "custom" ? " on" : ""), onclick: () => {
             m.mode = "custom";
             if (!m.channels?.length) m.channels = availableChannels().map((c) => ({ ...c }));
             render();
-          } }, h("b", { text: "Eigene Auswahl" }), h("span", { text: "Du bestimmst, welche Regler da sind und in welcher Reihenfolge." })))),
+          } }, h("b", { text: "Eigene Auswahl" }), h("span", { text: "Du bestimmst, welche Regler da sind und in welcher Reihenfolge." })),
+          h("button", { class: "choice" + (m.mode === "obs" ? " on" : ""), onclick: () => { m.mode = "obs"; render(); } },
+            h("b", { text: "OBS-Audio-Mixer" }), h("span", { text: "Nur die Quellen, die in deinem OBS-Mixer gerade aktiv sind – passt sich beim Szenenwechsel an." })))),
+      m.mode === "obs" ? h("div", { class: "section" }, h("h3", { text: "Gerade aktiv in OBS" }),
+        App.state.obs?.connected
+          ? (obsActiveInputs().length ? h("div", { class: "src-offers" }, obsActiveInputs().map((n) => h("span", { class: "chip src-chip" }, logoFor({ kind: "obs", input: n }), h("span", { text: n }))))
+            : h("p", { class: "help", text: "Keine aktive Audioquelle in OBS." }))
+          : h("p", { class: "help", text: "OBS ist nicht verbunden – ⚙️ Einstellungen → OBS." })) : null,
       m.mode === "custom" ? [
         h("div", { class: "section" }, h("h3", { text: `Deine Regler (${(m.channels || []).length})` }),
           (m.channels || []).length ? null : h("p", { class: "help", text: "Noch keine – unten Quellen hinzufügen." }),
@@ -1538,6 +1563,7 @@ function sourceOptions(source, action) {
   switch (source) {
     case "obsScenes": return o.scenes || [];
     case "obsInputs": return o.inputs || [];
+    case "obsActive": return obsActiveInputs();
     case "obsSources": return Object.keys((o.sources || {})[action.scene || o.current_scene] || {});
     case "audioApps": return App.audioApps;
   }
@@ -2048,6 +2074,16 @@ function openSettings() {
         h("div", { class: "section" }, h("h3", { text: "Automatisch erstellen" }),
           h("p", { class: "help", text: "Erstellt eine Seite „OBS-Szenen“ mit einer Taste für jede Szene und jede Audioquelle aus deinem OBS." }),
           h("button", { class: "btn primary", disabled: !o.connected, html: icon("grid") + "Szenen-Seite erzeugen", onclick: () => { buildObsPage(draft); toast("Seite „OBS-Szenen“ erstellt – jetzt speichern", "ok"); } })),
+        h("div", { class: "section" }, h("h3", { text: "OBS-Mixer (Fader)" }),
+          h("p", { class: "help", text: "Die Seite „OBS-Mixer“ zeigt für jede Quelle, die in deinem OBS-Audio-Mixer aktiv ist, einen Fader mit Pegelanzeige. Beim Szenenwechsel passt sie sich automatisch an." }),
+          o.connected ? h("p", { class: "help", text: "Gerade aktiv: " + (obsActiveInputs().join(", ") || "keine") }) : null,
+          draft.pages.some((p) => p.type === "mixer" && p.mixer?.mode === "obs")
+            ? h("span", { class: "pill ok", text: "Seite „OBS-Mixer“ ist vorhanden" })
+            : h("button", { class: "btn", text: "🎚️ OBS-Mixer-Seite hinzufügen", onclick: () => {
+              const after = draft.pages.findIndex((p) => p.id === "obs");
+              draft.pages.splice(after >= 0 ? after + 1 : draft.pages.length, 0, { id: "obs-mixer-" + uid(), name: "OBS-Mixer", type: "mixer", mixer: { mode: "obs" }, buttons: {} });
+              toast("Seite „OBS-Mixer“ hinzugefügt – jetzt speichern", "ok"); show();
+            } })),
       ];
     },
     discord: () => [

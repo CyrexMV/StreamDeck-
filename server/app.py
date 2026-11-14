@@ -115,7 +115,7 @@ class DeckServer:
         self.obs.configure(self.store.obs)
         loops = [("stats", self._poll_stats, 1.0), ("media", self._poll_media, 1.5),
                  ("audio", self.refresh_audio, 2.0), ("spotify", self.spotify.poll, 3.0),
-                 ("icons", self._retry_icons, 30.0)]
+                 ("icons", self._retry_icons, 30.0), ("meters", self._send_meters, 0.1)]
         for name, fn, interval in loops:
             self._bg_tasks.append(asyncio.create_task(self._loop(name, fn, interval), name=name))
 
@@ -512,6 +512,13 @@ class DeckServer:
         if snap != self.state["audio"]:
             self.state["audio"] = snap
             await self.broadcast_state("audio")
+
+    async def _send_meters(self) -> None:
+        """OBS-Pegel ~10× pro Sekunde ans Tablet – als eigene kleine Nachricht, ohne die Kacheln neu zu zeichnen."""
+        meters = self.obs.meters if self.obs.state.get("connected") else {}
+        if meters != getattr(self, "_last_meters", None):
+            self._last_meters = dict(meters)
+            await self.broadcast({"type": "meters", "obs": meters})
 
     async def _poll_stats(self) -> None:
         stats = await asyncio.to_thread(self.system.stats)

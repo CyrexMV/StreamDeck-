@@ -51,7 +51,7 @@ DEFAULT_SETTINGS = {
     "radius": 18,
     "discord": {"mute": "f14", "deafen": "f15", "ptt": "f13"},
 }
-CONFIG_VERSION = 5
+CONFIG_VERSION = 6
 DEFAULT_OBS = {"enabled": True, "host": "127.0.0.1", "port": 4455, "password": ""}
 
 
@@ -229,6 +229,14 @@ class ConfigStore:
         if version < 5:
             # Mikrofon/Kopfhörer/Lautsprecher-Symbole, die bei „stumm“ rot durchgestrichen werden
             self._add_mute_symbols()
+        if version < 6:
+            # OBS-Mixer: Fader für genau die Quellen, die im OBS-Audio-Mixer aktiv sind
+            pages = self.data.setdefault("pages", [])
+            if not any(p.get("type") == "mixer" and (p.get("mixer") or {}).get("mode") == "obs" for p in pages):
+                pid = "obs-mixer" if not any(p.get("id") == "obs-mixer" for p in pages) else "obs-mixer-2"
+                after = next((i + 1 for i, p in enumerate(pages) if p.get("id") == "obs"), len(pages))
+                pages.insert(after, {"id": pid, "name": "OBS-Mixer", "type": "mixer", "mixer": {"mode": "obs"}, "buttons": {}})
+                log.info("Neue Seite „OBS-Mixer“ hinzugefügt")
         self.data["version"] = CONFIG_VERSION
 
     def _add_mute_symbols(self) -> None:

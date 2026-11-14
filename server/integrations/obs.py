@@ -11,6 +11,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+import math
 import uuid
 from typing import Any, Awaitable, Callable
 
@@ -61,6 +62,8 @@ class OBSClient:
             "inputs": [],
             "muted": {},
             "volumes": {},
+            "active_inputs": [],      # Quellen, die gerade im OBS-Audio-Mixer aktiv sind
+            "active_known": False,    # False, solange OBS noch keine Pegel gemeldet hat
             "sources": {},
             "recording": False,
             "record_paused": False,
@@ -70,6 +73,7 @@ class OBSClient:
             "studio_mode": False,
         }
         self._item_ids: dict[str, dict[int, str]] = {}
+        self.meters: dict[str, int] = {}
 
     # ------------------------------------------------------------- Lebenszyklus
     def configure(self, cfg: dict) -> None:
@@ -159,7 +163,8 @@ class OBSClient:
         data = hello.json()
         if data.get("op") != 0:
             raise OBSError("Unerwartete Begrüßung von OBS")
-        identify: dict[str, Any] = {"rpcVersion": 1}
+        # Alle normalen Events + InputVolumeMeters (Pegel aller Quellen, die im OBS-Audio-Mixer aktiv sind)
+        identify: dict[str, Any] = {"rpcVersion": 1, "eventSubscriptions": 2047 | (1 << 16)}
         auth = data["d"].get("authentication")
         if auth:
             password = self._cfg.get("password") or ""
@@ -300,6 +305,9 @@ class OBSClient:
     # ---------------------------------------------------------------- Events
     async def _handle_event(self, event: str, data: dict) -> None:
         s = self.state
+        if event == "InputVolumeMeters":
+            self._on_meters(data.get("inputs") or [])
+            return
         if event == "CurrentProgramSceneChanged":
             s["current_scene"] = data.get("sceneName")
         elif event in ("SceneListChanged", "SceneNameChanged", "SceneCreated", "SceneRemoved"):
@@ -396,6 +404,26 @@ class OBSClient:
             await self._screenshot()
         else:
             raise OBSError(f"Unbekannte OBS-Aktion: {op}")
+
+    def _on_meters(self, inputs: list) -> None:
+        """OBS meldet ca. 20× pro Sekunde die Pegel aller aktiven Audioquellen – genau die im OBS-Audio-Mixer."""
+        meters: dict[str, int] = {}
+        for item in inputs:
+            name = item.get("inputName")
+            if not name:
+                continue
+            peak = 0.0
+            for channel in item.get("inputLevelsMul") or []:
+                if len(channel) > 1:
+                    peak = max(peak, float(channel[1] or 0))
+            db = 20 * math.log10(peak) if peak > 0 else -100.0
+            meters[name] = max(0, min(100, round((db + 60) / 60 * 100)))
+        self.meters = meters
+        known = [n for n in self.state["inputs"] if n in meters] + [n for n in meters if n not in self.state["inputs"]]
+        if known != self.state["active_inputs"] or not self.state["active_known"]:
+            self.state["active_inputs"] = known
+            self.state["active_known"] = True
+            self._notify()
 
     async def set_input_volume(self, name: str, percent: float) -> None:
         """Fader 0–100 % → OBS-Lautstärke (0 % = aus, sonst −60 dB … 0 dB wie der OBS-Mixer)."""
