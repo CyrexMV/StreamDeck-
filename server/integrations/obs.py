@@ -31,6 +31,21 @@ class OBSError(ActionError):
     pass
 
 
+# Quellenarten, die OBS immer im Audio-Mixer zeigt (Audio-Geräte, Anwendungsaudio, Mediendateien)
+AUDIO_KINDS = {
+    "wasapi_input_capture", "wasapi_output_capture", "wasapi_process_output_capture",
+    "coreaudio_input_capture", "coreaudio_output_capture", "sck_audio_capture",
+    "pulse_input_capture", "pulse_output_capture", "alsa_input_capture", "jack_output_capture",
+    "asio_input_capture", "ffmpeg_source", "vlc_source",
+}
+# Bild-/Videoquellen, die nur dann im Audio-Mixer erscheinen, wenn Ton in den Eigenschaften aktiviert ist
+AUDIO_SETTING_KINDS = {
+    "browser_source": "reroute_audio",   # „Audio über OBS steuern“
+    "game_capture": "capture_audio",     # „Audio aufnehmen“
+    "window_capture": "capture_audio",
+}
+
+
 def _db(value) -> float:
     """OBS liefert für „stumm“ (Faktor 0) -inf bzw. null – auf −100 dB abbilden."""
     try:
@@ -74,6 +89,9 @@ class OBSClient:
         }
         self._item_ids: dict[str, dict[int, str]] = {}
         self.meters: dict[str, int] = {}
+        self._kinds: dict[str, str] = {}
+        self._audio_on: dict[str, bool] = {}
+        self._heard: set[str] = set()
 
     # ------------------------------------------------------------- Lebenszyklus
     def configure(self, cfg: dict) -> None:
@@ -281,6 +299,9 @@ class OBSClient:
     async def _refresh_inputs(self) -> None:
         data = await self.request("GetInputList")
         names = [i["inputName"] for i in data.get("inputs", [])]
+        self._kinds = {i["inputName"]: i.get("unversionedInputKind") or i.get("inputKind") or "" for i in data.get("inputs", [])}
+        await asyncio.gather(*(self._load_audio_setting(n) for n in names if self._kinds.get(n) in AUDIO_SETTING_KINDS),
+                             return_exceptions=True)
 
         async def mute_state(name: str):
             try:
@@ -300,7 +321,31 @@ class OBSClient:
 
         vols = await asyncio.gather(*(volume(n) for n in self.state["inputs"]))
         self.state["volumes"] = {n: v for n, v in vols if v is not None}
+        self._update_active()
         self._notify()
+
+    async def _load_audio_setting(self, name: str) -> None:
+        key = AUDIO_SETTING_KINDS[self._kinds[name]]
+        settings = (await self.request("GetInputSettings", {"inputName": name})).get("inputSettings") or {}
+        self._audio_on[name] = bool(settings.get(key, False))
+
+    def _in_mixer(self, name: str) -> bool:
+        """Würde OBS diese Quelle im Audio-Mixer anzeigen?"""
+        kind = self._kinds.get(name, "")
+        if kind in AUDIO_KINDS:
+            return True                       # reine Audioquellen, Mediendateien
+        if kind in AUDIO_SETTING_KINDS:
+            return self._audio_on.get(name, False)  # Ton in den Eigenschaften eingeschaltet?
+        return name in self._heard            # sonst (z. B. Webcam): nur wenn wirklich Ton ankommt
+
+    def _update_active(self) -> None:
+        meters = self.meters
+        order = [n for n in self.state["inputs"] if n in meters] + [n for n in meters if n not in self.state["inputs"]]
+        active = [n for n in order if self._in_mixer(n)]
+        if active != self.state["active_inputs"] or not self.state["active_known"]:
+            self.state["active_inputs"] = active
+            self.state["active_known"] = bool(meters) or self.state["active_known"]
+            self._notify()
 
     # ---------------------------------------------------------------- Events
     async def _handle_event(self, event: str, data: dict) -> None:
@@ -334,6 +379,17 @@ class OBSClient:
             s["muted"][name] = bool(data.get("inputMuted"))
             if name not in s["inputs"]:
                 s["inputs"].append(name)
+        elif event == "InputSettingsChanged":
+            name = data.get("inputName")
+            kind = self._kinds.get(name)
+            if kind in AUDIO_SETTING_KINDS:
+                settings = data.get("inputSettings") or {}
+                if AUDIO_SETTING_KINDS[kind] in settings:
+                    self._audio_on[name] = bool(settings[AUDIO_SETTING_KINDS[kind]])
+                else:
+                    asyncio.create_task(self._safe(self._load_audio_setting(name)))
+                self._update_active()
+            return
         elif event in ("InputCreated", "InputRemoved", "InputNameChanged"):
             asyncio.create_task(self._safe(self._refresh_inputs()))
             if event == "InputNameChanged":
@@ -408,6 +464,7 @@ class OBSClient:
     def _on_meters(self, inputs: list) -> None:
         """OBS meldet ca. 20× pro Sekunde die Pegel aller aktiven Audioquellen – genau die im OBS-Audio-Mixer."""
         meters: dict[str, int] = {}
+        sounding: set[str] = set()
         for item in inputs:
             name = item.get("inputName")
             if not name:
@@ -416,14 +473,15 @@ class OBSClient:
             for channel in item.get("inputLevelsMul") or []:
                 if len(channel) > 1:
                     peak = max(peak, float(channel[1] or 0))
+            if peak > 0:
+                sounding.add(name)
             db = 20 * math.log10(peak) if peak > 0 else -100.0
             meters[name] = max(0, min(100, round((db + 60) / 60 * 100)))
         self.meters = meters
-        known = [n for n in self.state["inputs"] if n in meters] + [n for n in meters if n not in self.state["inputs"]]
-        if known != self.state["active_inputs"] or not self.state["active_known"]:
-            self.state["active_inputs"] = known
-            self.state["active_known"] = True
-            self._notify()
+        # Quellen ohne eindeutige Art (z. B. Webcam): erst zählen, wenn wirklich Ton ankommt
+        self._heard = {n for n in self._heard if n in meters} | sounding
+        self.state["active_known"] = True
+        self._update_active()
 
     async def set_input_volume(self, name: str, percent: float) -> None:
         """Fader 0–100 % → OBS-Lautstärke (0 % = aus, sonst −60 dB … 0 dB wie der OBS-Mixer)."""

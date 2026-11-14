@@ -464,3 +464,5 @@ body.editing .face.fader-face .fader { pointer-events: none; }
 .fader.h .f-meter::after { top: 0; bottom: 0; left: auto; right: 0; height: auto; width: calc(100% - var(--m, 0%)); }
 .fader.muted .f-meter { opacity: .35; }
 .choice-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.src-chip.on { border-color: var(--acc); }
+.src-chip.off { opacity: .5; text-decoration: line-through; }

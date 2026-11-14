@@ -144,7 +144,10 @@ für einen langen Fader. Dafür müssen die Felder darunter frei sein. Eine weit
 ⚙️ → Seiten → „Mixer-Seite hinzufügen“.
 
 **OBS-Mixer:** Der Reiter **„OBS-Mixer“** zeigt für jede Quelle, die in deinem **OBS-Audio-Mixer gerade aktiv** ist,
-einen Fader mit Pegelanzeige, so wie der Mixer in OBS selbst. Wechselst du die Szene, passen sich die Fader
+einen Fader mit Pegelanzeige, so wie der Mixer in OBS selbst. Bild- und Videoquellen erscheinen nur, wenn bei ihnen
+der Ton eingeschaltet ist (Spiel-/Fensteraufnahme: „Audio aufnehmen“, Browserquelle: „Audio über OBS steuern“,
+Webcam: nur mit Mikrofon). Quellen, die du in OBS im Mixer versteckt hast, blendest du unter ✏️ → „Mixer einrichten“
+auch hier aus. OBS gibt diese Einstellung nicht weiter. Wechselst du die Szene, passen sich die Fader
 automatisch an. Fehlt die Seite, gibt es sie unter ⚙️ → OBS → „OBS-Mixer-Seite hinzufügen“. Auch beim Hinzufügen
 einzelner OBS-Fader (Kachel oder „Mixer einrichten“) werden nur die aktiven OBS-Quellen angeboten.
 

@@ -1032,7 +1032,10 @@ function decorateChannel(c) {
 function mixerChannels(page) {
   const m = page?.mixer || {};
   if (m.mode === "custom") return (m.channels || []).map(decorateChannel);
-  if (m.mode === "obs") return obsActiveInputs().map((input) => ({ ...decorateChannel({ kind: "obs", input }), group: undefined }));
+  if (m.mode === "obs") {
+    const hidden = new Set(m.hidden || []);
+    return obsActiveInputs().filter((n) => !hidden.has(n)).map((input) => ({ ...decorateChannel({ kind: "obs", input }), group: undefined }));
+  }
   return availableChannels().map(decorateChannel);
 }
 
@@ -1172,11 +1175,24 @@ function openMixerSetup(pageId) {
           } }, h("b", { text: "Eigene Auswahl" }), h("span", { text: "Du bestimmst, welche Regler da sind und in welcher Reihenfolge." })),
           h("button", { class: "choice" + (m.mode === "obs" ? " on" : ""), onclick: () => { m.mode = "obs"; render(); } },
             h("b", { text: "OBS-Audio-Mixer" }), h("span", { text: "Nur die Quellen, die in deinem OBS-Mixer gerade aktiv sind – passt sich beim Szenenwechsel an." })))),
-      m.mode === "obs" ? h("div", { class: "section" }, h("h3", { text: "Gerade aktiv in OBS" }),
-        App.state.obs?.connected
-          ? (obsActiveInputs().length ? h("div", { class: "src-offers" }, obsActiveInputs().map((n) => h("span", { class: "chip src-chip" }, logoFor({ kind: "obs", input: n }), h("span", { text: n }))))
-            : h("p", { class: "help", text: "Keine aktive Audioquelle in OBS." }))
-          : h("p", { class: "help", text: "OBS ist nicht verbunden – ⚙️ Einstellungen → OBS." })) : null,
+      m.mode === "obs" ? h("div", { class: "section" }, h("h3", { text: "Quellen in deinem OBS-Audio-Mixer" }),
+        App.state.obs?.connected ? [
+          h("p", { class: "help", text: "Antippen zum Ausblenden bzw. wieder Einblenden – z. B. für Quellen, die du in OBS im Mixer versteckt hast." }),
+          (() => {
+            const hidden = new Set(m.hidden || []);
+            const names = [...new Set([...obsActiveInputs(), ...hidden])];
+            if (!names.length) return h("p", { class: "help", text: "Gerade ist keine Quelle im OBS-Audio-Mixer aktiv." });
+            return h("div", { class: "src-offers" }, names.map((n) => h("button", {
+              class: "chip src-chip" + (hidden.has(n) ? " off" : " on"),
+              onclick: () => {
+                const set = new Set(m.hidden || []);
+                set.has(n) ? set.delete(n) : set.add(n);
+                m.hidden = [...set];
+                if (!m.hidden.length) delete m.hidden;
+                render();
+              } }, logoFor({ kind: "obs", input: n }), h("span", { text: (hidden.has(n) ? "Ausgeblendet: " : "✓ ") + n }))));
+          })(),
+        ] : h("p", { class: "help", text: "OBS ist nicht verbunden – ⚙️ Einstellungen → OBS." })) : null,
       m.mode === "custom" ? [
         h("div", { class: "section" }, h("h3", { text: `Deine Regler (${(m.channels || []).length})` }),
           (m.channels || []).length ? null : h("p", { class: "help", text: "Noch keine – unten Quellen hinzufügen." }),
