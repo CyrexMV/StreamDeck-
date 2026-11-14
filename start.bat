@@ -34,4 +34,9 @@ if errorlevel 1 (
 )
 
 ".venv\Scripts\python.exe" -m server --open %*
-pause
+:neustart
+echo.
+echo TabDeck wurde beendet. Neustart in 5 Sekunden ... (zum endgueltigen Beenden dieses Fenster schliessen)
+timeout /t 5 >nul
+".venv\Scripts\python.exe" -m server %*
+goto neustart

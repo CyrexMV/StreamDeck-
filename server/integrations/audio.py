@@ -21,6 +21,12 @@ def _com_init() -> None:
         pass
 
 
+def _com_cleanup() -> None:
+    import gc
+
+    gc.collect()  # übrige COM-Objekte hier (im COM-Thread) freigeben
+
+
 class AudioController:
     def __init__(self) -> None:
         self.available = False
@@ -39,6 +45,14 @@ class AudioController:
         except Exception as exc:
             self.error = f"pycaw nicht verfügbar: {exc}"
             log.warning(self.error)
+
+    def close(self) -> None:
+        """COM-Objekte im Audio-Thread freigeben, bevor Python beendet wird (sonst „COM method call without VTable“)."""
+        try:
+            self._executor.submit(_com_cleanup).result(timeout=3)
+        except Exception:
+            pass
+        self._executor.shutdown(wait=False, cancel_futures=True)
 
     async def _run(self, fn, *args):
         if not self.available:
@@ -128,6 +142,14 @@ class AudioController:
 
     # ------------------------------------------------------------ Zustand
     def _snapshot(self) -> dict:
+        try:
+            return self._snapshot_inner()
+        finally:
+            self._calls = getattr(self, "_calls", 0) + 1
+            if self._calls % 15 == 0:
+                _com_cleanup()
+
+    def _snapshot_inner(self) -> dict:
         state: dict = {"available": True, "master": None, "mic": None, "apps": {}}
         try:
             ep = self._endpoint(mic=False)
