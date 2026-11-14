@@ -23,6 +23,13 @@ import aiohttp
 from ..errors import ActionError
 
 
+class SpotifyError(ActionError):
+    def __init__(self, message: str, status: int = 0, reason: str = ""):
+        super().__init__(message)
+        self.status = status
+        self.reason = reason
+
+
 class NoDevice(ActionError):
     pass
 
@@ -194,13 +201,13 @@ class SpotifyAPI:
             pass
         if status == 403 and (reason == "PREMIUM_REQUIRED" or "premium" in message.lower()):
             raise PremiumRequired("Für diese Funktion verlangt Spotify ein Premium-Abo")
-        if status == 404 or reason == "NO_ACTIVE_DEVICE":
+        if reason == "NO_ACTIVE_DEVICE" or (status == 404 and path.startswith("/me/player")):
             raise NoDevice("Kein aktives Spotify-Gerät – starte die Wiedergabe einmal in Spotify")
         if status == 429:
             raise ActionError("Spotify: zu viele Anfragen – kurz warten")
         if status == 403 and "volume" in message.lower():
             raise ActionError("Dieses Spotify-Gerät erlaubt keine Lautstärkeänderung")
-        raise ActionError(f"Spotify-Fehler {status}: {message or reason or 'unbekannt'}")
+        raise SpotifyError(f"Spotify-Fehler {status}: {message or reason or 'unbekannt'}", status, reason)
 
     # --------------------------------------------------------------- Status
     async def poll(self) -> None:
@@ -229,8 +236,7 @@ class SpotifyAPI:
         )
         if item.get("id") and item.get("id") != self.state.get("track_id"):
             try:
-                res = await self.api("GET", "/me/tracks/contains", {"ids": item["id"]})
-                new["liked"] = bool(res and res[0])
+                new["liked"] = await self._is_saved(item.get("uri") or f"spotify:track:{item['id']}")
             except ActionError:
                 new["liked"] = False
         if self._target_volume is not None and time.monotonic() - self._target_time < 2.5:
@@ -292,14 +298,67 @@ class SpotifyAPI:
         await self._on_change()
 
     async def toggle_like(self) -> None:
-        player = await self.api("GET", "/me/player/currently-playing")
-        track = ((player or {}).get("item") or {}).get("id")
+        player = await self.api("GET", "/me/player/currently-playing", {"additional_types": "track,episode"})
+        item = (player or {}).get("item") or {}
+        track = item.get("id")
         if not track:
             raise ActionError("Gerade läuft kein Titel in Spotify")
-        liked = (await self.api("GET", "/me/tracks/contains", {"ids": track}))[0]
-        await self.api("DELETE" if liked else "PUT", "/me/tracks", {"ids": track})
+        uri = item.get("uri") or f"spotify:track:{track}"
+        liked = await self._is_saved(uri)
+        await self._set_saved(uri, not liked)
         self.state.update(liked=not liked, track_id=track)
         await self._on_change()
+
+    # ------------------------------------------------- Bibliothek (Lieblingssongs)
+    # Seit 2026 sperrt Spotify für eigene Entwickler-Apps die alten Adressen (/me/tracks → 403)
+    # und bietet stattdessen /me/library mit „uris“ an. Neue Adresse zuerst, alte als Ersatz.
+    _OLD_LIBRARY = {"track": "/me/tracks", "episode": "/me/episodes"}
+
+    async def _library_call(self, new_call, old_call):
+        attempts = [new_call, old_call] if self._s.get("library_api") != "old" else [old_call, new_call]
+        last_error: ActionError | None = None
+        for index, attempt in enumerate(attempts):
+            try:
+                result = await attempt()
+                variant = ("new", "old")[index] if attempts[0] is new_call else ("old", "new")[index]
+                if self._s.get("library_api") != variant:
+                    self._s["library_api"] = variant
+                    self._save()
+                return result
+            except SpotifyError as exc:
+                last_error = exc
+                if exc.status not in (400, 403, 404, 405, 410):
+                    raise
+        if isinstance(last_error, SpotifyError) and last_error.status == 403:
+            raise ActionError(
+                "Spotify verweigert das Speichern in deiner Bibliothek (403). Bitte unter ⚙️ → Spotify "
+                "„Spotify trennen“ und neu verbinden – danach erneut versuchen.") from None
+        raise last_error or ActionError("Spotify-Bibliothek nicht erreichbar")
+
+    async def _is_saved(self, uri: str) -> bool:
+        kind, item_id = uri.split(":")[1], uri.split(":")[-1]
+
+        async def new():
+            res = await self.api("GET", "/me/library/contains", {"uris": uri})
+            return bool(res and res[0])
+
+        async def old():
+            res = await self.api("GET", self._OLD_LIBRARY.get(kind, "/me/tracks") + "/contains", {"ids": item_id})
+            return bool(res and res[0])
+
+        return await self._library_call(new, old)
+
+    async def _set_saved(self, uri: str, save: bool) -> None:
+        kind, item_id = uri.split(":")[1], uri.split(":")[-1]
+        method = "PUT" if save else "DELETE"
+
+        async def new():
+            await self.api(method, "/me/library", {"uris": uri})
+
+        async def old():
+            await self.api(method, self._OLD_LIBRARY.get(kind, "/me/tracks"), {"ids": item_id})
+
+        await self._library_call(new, old)
 
     async def transport(self, op: str) -> None:
         """Ersatzweg für Play/Pause usw., falls die Windows-Medien-API Spotify nicht findet."""
