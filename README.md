@@ -139,6 +139,12 @@ auf dem **Tablet** abgespielt wird, und was erneutes Drücken macht: von vorn, s
 Taste leuchtet, solange der Sound läuft. „Alle Sounds stoppen“ beendet alles. Unter ⚙️ → Sounds erzeugt
 **„Soundboard-Seite erzeugen“** automatisch eine Seite mit allen Sounds.
 
+**Sounds im Stream (auch ohne Desktop-Audio):** Wiedergabe **„In OBS“** wählen (oder unter ⚙️ → Sounds „Alle Sound-Tasten
+auf ‚In OBS‘ umstellen“). TabDeck legt in OBS die Medienquelle **„TabDeck Sounds“** an und spielt darüber ab. Sie landet in
+Stream und Aufnahme und erscheint im OBS-Mixer, wo du die Lautstärke regelst. Selbst hörst du sie über das OBS-Monitoring:
+*OBS → Einstellungen → Audio → Erweitert → Monitoring-Gerät* = dein Kopfhörer. OBS muss dafür auf demselben PC laufen
+und verbunden sein.
+
 **Song per Link abspielen:** Neue Taste → Vorlage **„Song abspielen“** (oder Aktion *Spotify → Song / Album / Playlist
 abspielen*). In Spotify beim Song auf **„⋯ → Teilen → Link kopieren“** tippen und den Link einfügen. TabDeck zeigt Titel
 und Cover an. Mit **„Cover als Bild“** und **„Titel als Beschriftung“** wird die Taste zur Album-Kachel. Beim Drücken spielt

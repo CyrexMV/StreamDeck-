@@ -46,6 +46,9 @@ AUDIO_SETTING_KINDS = {
 }
 
 
+SOUND_INPUT = "TabDeck Sounds"
+
+
 def _db(value) -> float:
     """OBS liefert für „stumm“ (Faktor 0) -inf bzw. null – auf −100 dB abbilden."""
     try:
@@ -86,12 +89,14 @@ class OBSClient:
             "virtualcam": False,
             "replay_buffer": False,
             "studio_mode": False,
+            "sound_playing": None,   # Datei, die gerade über „TabDeck Sounds“ in OBS läuft
         }
         self._item_ids: dict[str, dict[int, str]] = {}
         self.meters: dict[str, int] = {}
         self._kinds: dict[str, str] = {}
         self._audio_on: dict[str, bool] = {}
         self._heard: set[str] = set()
+        self._sound_file: str | None = None
 
     # ------------------------------------------------------------- Lebenszyklus
     def configure(self, cfg: dict) -> None:
@@ -370,6 +375,8 @@ class OBSClient:
             s["virtualcam"] = bool(data.get("outputActive"))
         elif event == "ReplayBufferStateChanged":
             s["replay_buffer"] = bool(data.get("outputActive"))
+        elif event in ("MediaInputPlaybackStarted", "MediaInputPlaybackEnded") and data.get("inputName") == SOUND_INPUT:
+            s["sound_playing"] = self._sound_file if event == "MediaInputPlaybackStarted" else None
         elif event == "StudioModeStateChanged":
             s["studio_mode"] = bool(data.get("studioModeEnabled"))
         elif event == "InputVolumeChanged":
@@ -495,6 +502,54 @@ class OBSClient:
             db = round((percent - 100.0) * 0.6, 1)
             await self.request("SetInputVolume", {"inputName": name, "inputVolumeDb": db})
         self.state["volumes"][name] = db
+        self._notify()
+
+    # ---------------------------------------------------- Sounds über OBS
+    async def play_sound(self, path: str, name: str, volume: float = 100, mode: str = "restart") -> None:
+        """Sound über die Medienquelle „TabDeck Sounds“ in OBS abspielen – landet im Stream/in der Aufnahme
+        (auch ohne Desktop-Audio) und ist über das OBS-Monitoring selbst hörbar."""
+        if not self._cfg.get("enabled") or not self.state.get("connected"):
+            raise OBSError("OBS ist nicht verbunden – für „In OBS abspielen“ muss OBS laufen")
+        if mode == "toggle" and self.state.get("sound_playing") == name:
+            await self.stop_sound()
+            return
+        scene = self.state.get("current_scene") or (await self.request("GetCurrentProgramScene")).get("sceneName")
+        settings = {"is_local_file": True, "local_file": path, "looping": False,
+                    "restart_on_activate": False, "close_when_inactive": False, "clear_on_media_end": True}
+        try:
+            await self.request("GetInputSettings", {"inputName": SOUND_INPUT})
+            exists = True
+        except OBSError:
+            exists = False
+        if not exists:
+            await self.request("CreateInput", {"sceneName": scene, "inputName": SOUND_INPUT, "inputKind": "ffmpeg_source",
+                                               "inputSettings": settings, "sceneItemEnabled": True})
+            try:  # selbst mithören (OBS → Einstellungen → Audio → Monitoring-Gerät)
+                await self.request("SetInputAudioMonitorType", {"inputName": SOUND_INPUT,
+                                                               "monitorType": "OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT"})
+            except OBSError:
+                pass
+        else:
+            # Quelle muss in der aktuellen Szene sein, sonst ist sie nicht aktiv und bleibt stumm
+            try:
+                await self.request("GetSceneItemId", {"sceneName": scene, "sourceName": SOUND_INPUT})
+            except OBSError:
+                await self.request("CreateSceneItem", {"sceneName": scene, "sourceName": SOUND_INPUT, "sceneItemEnabled": True})
+            await self.request("SetInputSettings", {"inputName": SOUND_INPUT, "inputSettings": settings, "overlay": True})
+        await self.request("SetInputVolume", {"inputName": SOUND_INPUT, "inputVolumeMul": max(0.0, min(100.0, float(volume))) / 100})
+        self._sound_file = name
+        await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"})
+        self.state["sound_playing"] = name
+        self._notify()
+
+    async def stop_sound(self) -> None:
+        if not self.state.get("connected"):
+            return
+        try:
+            await self.request("TriggerMediaInputAction", {"inputName": SOUND_INPUT, "mediaAction": "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_STOP"})
+        except OBSError:
+            pass
+        self.state["sound_playing"] = None
         self._notify()
 
     async def _screenshot(self) -> None:

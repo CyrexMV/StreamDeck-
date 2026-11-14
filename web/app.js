@@ -163,7 +163,9 @@ const ACTIONS = {
       { k: "file", label: "Sound", type: "soundfile", show: (a) => a.op !== "stop_all" },
       { k: "volume", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op !== "stop_all" },
       { k: "target", label: "Abspielen", type: "select", show: (a) => a.op !== "stop_all",
-        options: [["pc", "Am PC (hörst du und z. B. dein Stream)"], ["tablet", "Auf dem Tablet"]] },
+        options: [["pc", "Am PC-Lautsprecher"], ["obs", "In OBS (Stream & Aufnahme – auch ohne Desktop-Audio)"], ["tablet", "Auf dem Tablet"]] },
+      { k: "_obs_hint", type: "info", show: (a) => a.op !== "stop_all" && a.target === "obs",
+        html: "Spielt über die Medienquelle <b>„TabDeck Sounds“</b> in OBS (wird automatisch angelegt). Du hörst ihn über das OBS-Monitoring mit. Nur „von vorn“ oder „stoppen“ – Sounds laufen hier nicht übereinander." },
       { k: "mode", label: "Erneut drücken, während er läuft", type: "select", show: (a) => a.op !== "stop_all",
         options: [["restart", "Von vorn starten"], ["toggle", "Stoppen"], ["overlap", "Zusätzlich noch einmal abspielen"]] },
     ],
@@ -619,6 +621,7 @@ function actionActive(a) {
       return a.op === "play_pause" ? !!m.playing : null;
     case "sound":
       if (a.op === "stop_all" || !a.file) return null;
+      if (a.target === "obs") return st.obs?.sound_playing === a.file;
       return a.target === "tablet" ? tabletSounds.has(a.file) : (st.sounds?.playing || []).includes(a.file);
     case "discord":
       if (a.op === "mute") return !!(st.discord?.mute || st.discord?.deafen); // taub = Mikro ist auch aus
@@ -1902,14 +1905,29 @@ function soundSettings(draft, show) {
           h("span", { class: "src-logo", text: "🔊" }),
           h("div", { class: "src-main" }, h("b", { text: soundName(x.name) }), h("span", { class: "help", text: `${x.name} · ${fmtSize(x.size)}` })),
           h("button", { class: "btn small", html: icon("play") + "Am PC", onclick: () => rpc("test_action", { action: { type: "sound", op: "play", file: x.name, volume: 100, mode: "restart" } }).catch((e) => toast(e.message, "error")) }),
+          h("button", { class: "btn small", html: icon("play") + "OBS", onclick: () => rpc("test_action", { action: { type: "sound", op: "play", file: x.name, volume: 100, mode: "restart", target: "obs" } }).catch((e) => toast(e.message, "error")) }),
           h("button", { class: "btn small", html: icon("play") + "Tablet", onclick: () => playTabletSound({ file: x.name, volume: 100, mode: "restart" }) })))
           : h("p", { class: "help", text: "Noch keine Sounds – Dateien in den Ordner legen und „Aktualisieren“ tippen." })),
+      h("div", { class: "section" }, h("h3", { text: "Im Stream hörbar machen (OBS)" }),
+        h("p", { class: "help", html: "Hast du in OBS <b>Desktop-Audio deaktiviert</b>, hört dein Stream Sounds „Am PC-Lautsprecher“ nicht. Mit <b>„In OBS“</b> spielt TabDeck sie über die Medienquelle „TabDeck Sounds“ direkt in OBS ab. Du hörst sie über das OBS-Monitoring mit (OBS → Einstellungen → Audio → Erweitert → Monitoring-Gerät = dein Kopfhörer)." }),
+        h("button", { class: "btn", text: "Alle Sound-Tasten auf „In OBS“ umstellen", onclick: () => {
+          let n = 0;
+          for (const page of draft.pages) for (const btn of Object.values(page.buttons || {})) {
+            for (const a of btn.actions || []) if (a.type === "sound" && a.op !== "stop_all" && a.target !== "obs") {
+              a.target = "obs"; if (a.mode === "overlap") a.mode = "restart"; n++;
+            }
+          }
+          toast(n ? `${n} Sound-Tasten spielen jetzt in OBS – „Speichern“ tippen` : "Alle Sound-Tasten spielen schon in OBS", n ? "ok" : "");
+        } })),
       h("div", { class: "section" }, h("h3", { text: "Soundboard-Seite" }),
         h("p", { class: "help", text: "Erstellt eine Seite „Soundboard“ mit einer Taste für jeden Sound und einer Stopp-Taste. Danach „Speichern“." }),
-        h("button", { class: "btn primary", disabled: !files.length, html: icon("grid") + "Soundboard-Seite erzeugen", onclick: () => {
-          buildSoundboardPage(draft, files);
-          toast("Seite „Soundboard“ erstellt – jetzt speichern", "ok");
-        } })),
+        h("div", { class: "row wrap" },
+          h("select", { style: { width: "auto", flex: "1", minWidth: "220px" }, value: App.soundboardTarget || "pc", onchange: (e) => { App.soundboardTarget = e.target.value; } },
+            [["pc", "Abspielen am PC-Lautsprecher"], ["obs", "Abspielen in OBS (Stream)"], ["tablet", "Abspielen auf dem Tablet"]].map(([v, l]) => h("option", { value: v, text: l }))),
+          h("button", { class: "btn primary", disabled: !files.length, html: icon("grid") + "Soundboard-Seite erzeugen", onclick: () => {
+            buildSoundboardPage(draft, files, App.soundboardTarget || "pc");
+            toast("Seite „Soundboard“ erstellt – jetzt speichern", "ok");
+          } }))),
     );
   };
   loadSounds().then(render);
@@ -1917,7 +1935,7 @@ function soundSettings(draft, show) {
   return [box];
 }
 
-function buildSoundboardPage(cfg, files) {
+function buildSoundboardPage(cfg, files, target = "pc") {
   let page = cfg.pages.find((p) => p.id === "soundboard");
   if (!page) { page = { id: "soundboard", name: "Soundboard", buttons: {} }; cfg.pages.push(page); }
   const total = cfg.settings.columns * cfg.settings.rows;
@@ -1925,7 +1943,7 @@ function buildSoundboardPage(cfg, files) {
   const b = { 0: { label: "Zurück", icon: "⬅️", color: C.dark, actions: [{ type: "back" }] } };
   files.slice(0, total - 2).forEach((x, i) => {
     b[i + 1] = { label: soundName(x.name), icon: "🔊", color: colors[i % colors.length],
-      actions: [{ type: "sound", op: "play", file: x.name, volume: 100, mode: "restart", target: "pc" }], active: { color: C.green } };
+      actions: [{ type: "sound", op: "play", file: x.name, volume: 100, mode: "restart", target }], active: { color: C.green } };
   });
   b[total - 1] = { label: "Alle stoppen", icon: "⏹️", color: C.rec, actions: [{ type: "sound", op: "stop_all" }] };
   page.buttons = Object.fromEntries(Object.entries(b).map(([k, v]) => [String(k), v]));

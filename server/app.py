@@ -385,6 +385,7 @@ class DeckServer:
             return True
         if method == "sound_stop":
             self.sounds.stop()
+            await self.obs.stop_sound()
             return True
         if method == "set_volume":
             await self._set_channel(p, float(p.get("value", 0)))

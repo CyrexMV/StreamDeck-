@@ -82,6 +82,10 @@ class ActionRunner:
         elif t == "sound":
             if a.get("op") == "stop_all":
                 self.s.sounds.stop()
+                await self.s.obs.stop_sound()
+            elif a.get("target") == "obs":
+                path = self.s.sounds.resolve(a.get("file", ""))
+                await self.s.obs.play_sound(str(path), a.get("file", ""), a.get("volume", 100), a.get("mode", "restart"))
             elif a.get("target") != "tablet":  # „auf dem Tablet“ spielt das Tablet selbst ab
                 await self.s.sounds.play(a.get("file", ""), a.get("volume", 100), a.get("mode", "restart"))
         elif t == "delay":
