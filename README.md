@@ -175,14 +175,17 @@ einzelner OBS-Fader (Kachel oder „Mixer einrichten“) werden nur die aktiven 
 
 **Nur für mich, nur für den Stream oder beides:** Bei Programm-Lautstärken (Spotify, Discord, Spiele …) wählst du unter
 **„Gilt für“**, was sich ändern soll:
-- **🎧 Nur meine Ohren:** Windows-Mixer. Der Stream bleibt gleich, wenn OBS das Programm über eine
-  **Anwendungsaudioaufnahme** aufnimmt.
+- **🎧 Nur meine Ohren:** TabDeck ändert die Lautstärke im Windows-Mixer. Weil der Windows-Mixer auch die
+  OBS-Anwendungsaudioaufnahme leiser macht, gleicht TabDeck das in OBS automatisch aus (Filter
+  **„TabDeck Ausgleich (nur Ohren)“** an der Aufnahme). Der Stream bleibt gleich laut. Für dich geht es bis etwa 3 %
+  herunter. „Stumm“ heißt hier: fast unhörbar, denn echtes Stummschalten in Windows würde auch den Stream stummschalten.
 - **📡 Nur Stream:** der Fader der OBS-Anwendungsaudioaufnahme dieses Programms. Du hörst es unverändert.
-- **🎧+📡 Beide:** beides. Bei Spotify ist das der Regler direkt in der Spotify-App.
+- **🎧+📡 Beide:** Windows-Mixer, das wirkt auf dich und den Stream. Bei Spotify ist es der Regler in der Spotify-App.
 
 Die passende OBS-Quelle erkennt TabDeck automatisch (Anwendungsaudioaufnahme, die z. B. auf `Spotify.exe` eingestellt
 ist). Bei Bedarf trägst du sie im Editor von Hand ein. Im Mixer schaltest du das oben für alle Programm-Regler um
-(„Programm-Regler wirken auf“), unter „Mixer einrichten“ auch pro Regler.
+(„Programm-Regler wirken auf“), unter „Mixer einrichten“ auch pro Regler. Den Filter „TabDeck Ausgleich“ in OBS bitte
+nicht löschen oder von Hand ändern.
 
 **Mixer einrichten:** Auf der Mixer-Seite ✏️ antippen und **„🎚️ Mixer einrichten“** wählen. Bei **„Automatisch“**
 erscheint alles, was Ton abspielt. Bei **„Eigene Auswahl“** bestimmst du selbst, welche Regler es gibt: Quellen

@@ -49,6 +49,7 @@ AUDIO_SETTING_KINDS = {
 APP_CAPTURE_KIND = "wasapi_process_output_capture"
 SOUND_INPUT = "TabDeck Sounds"
 SOUND_GAIN_FILTER = "TabDeck Lautstärke"
+COMPENSATION_FILTER = "TabDeck Ausgleich (nur Ohren)"
 MEDIA_STATES = {
     "OBS_MEDIA_STATE_NONE": "keine Datei geladen", "OBS_MEDIA_STATE_OPENING": "öffnet die Datei",
     "OBS_MEDIA_STATE_BUFFERING": "lädt", "OBS_MEDIA_STATE_PAUSED": "pausiert", "OBS_MEDIA_STATE_STOPPED": "gestoppt",
@@ -108,6 +109,7 @@ class OBSClient:
         self._sound_loaded: str | None = None
         self._saw_playing = False
         self._sound_gain: float | None = None
+        self._compensation: dict[str, float] = {}
 
     # ------------------------------------------------------------- Lebenszyklus
     def configure(self, cfg: dict) -> None:
@@ -645,6 +647,36 @@ class OBSClient:
             self._sound_gain = db
         except OBSError as exc:
             log.debug("Lautstärke-Filter nicht setzbar: %s", exc)
+
+    async def get_compensation(self, source: str) -> float:
+        """Aktueller Ausgleich (dB) – aus dem Speicher oder direkt aus dem Filter in OBS."""
+        if source in self._compensation:
+            return self._compensation[source]
+        try:
+            settings = (await self.request("GetSourceFilter", {"sourceName": source, "filterName": COMPENSATION_FILTER})).get("filterSettings") or {}
+            db = float(settings.get("db", 0.0))
+        except (OBSError, TypeError, ValueError):
+            db = 0.0
+        self._compensation[source] = db
+        return db
+
+    async def set_compensation(self, source: str, db: float) -> None:
+        """Verstärkung „TabDeck Ausgleich (nur Ohren)“ an der OBS-Quelle: gleicht aus, was Windows für dich leiser macht."""
+        db = max(-30.0, min(30.0, round(db, 1)))
+        if self._compensation.get(source) == db:
+            return
+        try:
+            await self.request("GetSourceFilter", {"sourceName": source, "filterName": COMPENSATION_FILTER})
+            exists = True
+        except OBSError:
+            exists = False
+        if exists:
+            await self.request("SetSourceFilterSettings", {"sourceName": source, "filterName": COMPENSATION_FILTER,
+                                                           "filterSettings": {"db": db}, "overlay": True})
+        elif db != 0:
+            await self.request("CreateSourceFilter", {"sourceName": source, "filterName": COMPENSATION_FILTER,
+                                                      "filterKind": "gain_filter", "filterSettings": {"db": db}})
+        self._compensation[source] = db
 
     async def _ensure_sound_visible(self, scene: str) -> None:
         """Quelle muss in der aktuellen Szene vorhanden und eingeblendet sein – sonst ist sie inaktiv und stumm."""

@@ -10,6 +10,7 @@ import hmac
 import io
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -490,6 +491,73 @@ class DeckServer:
         await self.broadcast_state("obs")
 
     # ---------------------------------------------------------------- Fader
+    # ------------------------------------------------- nur für meine Ohren
+    EARS_MIN = 3.2  # % – darunter kann OBS (max. +30 dB) nicht mehr ausgleichen
+
+    async def ears_volume(self, app: str, op: str, step: float = 5, obs_source: str | None = None) -> None:
+        """Lautstärke nur für dich: Windows-Mixer ändern und den Stream per OBS-Filter gleich laut halten.
+        (Der Windows-Mixer wirkt auch auf die OBS-Anwendungsaudioaufnahme – deshalb der Ausgleich.)"""
+        if not self.audio.available:
+            raise ActionError(self.audio.error or "Lautstärkesteuerung nicht verfügbar")
+        key = (app or "").lower().removesuffix(".exe")
+        snap = await self.audio.snapshot()
+        info = (snap.get("apps") or {}).get(key)
+        if not info:
+            raise ActionError(f"„{app}“ spielt gerade keinen Ton ab")
+        current = float(info.get("level") or 0)
+        if info.get("muted"):  # Windows-Stumm würde auch den Stream stummschalten
+            await self.audio.apply("app", app, "unmute", 0)
+        step = float(step) if step not in (None, "") else 5.0
+        prev = getattr(self, "_ears_prev", {})
+        self._ears_prev = prev
+        if op in ("up",):
+            new = min(100.0, current + step)
+        elif op in ("down",):
+            new = max(self.EARS_MIN, current - step)
+        elif op == "set":
+            new = max(self.EARS_MIN, min(100.0, step))
+        elif op in ("toggle_mute", "mute_toggle", "mute", "unmute"):
+            quiet = current <= self.EARS_MIN + 0.5
+            if op == "unmute" or (op != "mute" and quiet):
+                new = prev.pop(key, 100.0)
+            else:
+                if not quiet:
+                    prev[key] = current
+                new = self.EARS_MIN
+        else:
+            raise ActionError(f"Unbekannte Lautstärke-Aktion: {op}")
+        # Stream-Lautstärke vorher merken (Windows × Ausgleich) und nachher genau so halten
+        stream_level = await self._stream_level(app, current, obs_source)
+        await self.audio.apply("app", app, "set", new)
+        await self._compensate(app, new, obs_source, stream_level)
+        self._schedule_audio_refresh()
+
+    async def _stream_level(self, app: str, windows_level: float, obs_source: str | None) -> float:
+        """Wie laut kommt das Programm gerade im Stream an (in % von „voll“)?"""
+        if not self.obs.state.get("connected"):
+            return 100.0
+        try:
+            source = self.obs.app_source(app, obs_source)
+        except ActionError:
+            return 100.0
+        level = min(100.0, windows_level * 10 ** (await self.obs.get_compensation(source) / 20))
+        # Programm war in Windows (fast) auf 0 → Stream war stumm; dann wieder vom vollen Pegel ausgehen
+        return level if level >= self.EARS_MIN else 100.0
+
+    async def reset_compensation(self, app: str, obs_source: str | None = None) -> None:
+        await self._compensate(app, 100.0, obs_source, 100.0)
+
+    async def _compensate(self, app: str, level: float, obs_source: str | None = None, stream_level: float = 100.0) -> None:
+        """Ausgleich so setzen, dass Windows-Pegel × Ausgleich = gewünschte Stream-Lautstärke."""
+        if not self.obs.state.get("connected"):
+            return
+        try:
+            source = self.obs.app_source(app, obs_source)
+        except ActionError:
+            return  # keine Anwendungsaudioaufnahme → nichts auszugleichen
+        db = 20 * math.log10(max(stream_level, 0.1) / max(level, self.EARS_MIN))
+        await self.obs.set_compensation(source, db)
+
     async def _set_channel(self, ch: dict, value: float) -> None:
         kind = ch.get("kind")
         value = max(0.0, min(100.0, value))
@@ -500,12 +568,15 @@ class DeckServer:
             if kind == "spotify" and scope == "both":
                 await self.spotify.set_volume(value)
                 return
-            if scope in ("ears", "both"):
+            if scope == "ears":
+                await self.ears_volume(app, "set", value, ch.get("obs_source"))
+            elif scope == "both":  # Windows-Mixer wirkt auch auf die OBS-Aufnahme → Ohren und Stream
                 if not self.audio.available:
                     raise ActionError(self.audio.error or "Lautstärkesteuerung nicht verfügbar")
                 await self.audio.apply("app", app, "set", value)
+                await self.reset_compensation(app, ch.get("obs_source"))  # fester Wert: für dich und Stream gleich
                 self._schedule_audio_refresh()
-            if scope in ("stream", "both"):
+            else:
                 await self.obs.set_input_volume(self.obs.app_source(app, ch.get("obs_source")), value)
         elif kind in ("master", "mic"):
             if not self.audio.available:
@@ -525,10 +596,12 @@ class DeckServer:
             if kind == "spotify" and scope == "both":
                 await self.spotify.volume("mute_toggle", 0)
                 return
-            if scope in ("ears", "both"):
+            if scope == "ears":
+                await self.ears_volume(app, "toggle_mute", 0, ch.get("obs_source"))
+            elif scope == "both":
                 await self.audio.apply("app", app, "toggle_mute", 0)
                 await self.refresh_audio()
-            if scope in ("stream", "both"):
+            else:
                 await self.obs.stream_volume(self.obs.app_source(app, ch.get("obs_source")), "toggle_mute")
         elif kind in ("master", "mic"):
             await self.audio.apply(kind, "", "toggle_mute", 0)

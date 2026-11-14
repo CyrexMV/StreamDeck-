@@ -108,9 +108,8 @@ class ActionRunner:
                 await sp.volume(op, step)
                 return
             vop = {"volume_up": "up", "volume_down": "down", "volume_set": "set", "mute_toggle": "toggle_mute"}[op]
-            if scope == "ears":  # nur was du hörst: Windows-Mixer
-                await self.s.audio.apply("app", "Spotify.exe", vop, step)
-                await self.s.refresh_audio()
+            if scope == "ears":  # nur was du hörst: Windows-Mixer + Ausgleich in OBS
+                await self.s.ears_volume("Spotify.exe", vop, step, a.get("obs_source"))
             else:  # nur Stream: OBS-Quelle, die Spotify aufnimmt
                 await self.s.obs.stream_volume(self.s.obs.app_source("Spotify.exe", a.get("obs_source")), vop, step)
             return
@@ -151,15 +150,15 @@ class ActionRunner:
         step = a.get("step", 5 if op != "set" else 50)
         audio = self.s.audio
         scope = a.get("scope") or "ears"
-        if target == "app" and scope in ("stream", "both"):
-            source = self.s.obs.app_source(a.get("app", ""), a.get("obs_source"))
-            if scope == "stream":
-                await self.s.obs.stream_volume(source, op, step)
-                return
-            await audio.apply(target, a.get("app", ""), op, step)
-            await self.s.obs.stream_volume(source, op, step)
-            await self.s.refresh_audio()
+        if target == "app" and scope == "stream":
+            await self.s.obs.stream_volume(self.s.obs.app_source(a.get("app", ""), a.get("obs_source")), op, step)
             return
+        if target == "app" and scope == "ears":
+            await self.s.ears_volume(a.get("app", ""), op, step, a.get("obs_source"))
+            return
+        # „beide“ bzw. PC/Mikrofon: Windows-Mixer (wirkt bei Programmen auch auf die OBS-Aufnahme)
+        if target == "app" and op == "set":
+            await self.s.reset_compensation(a.get("app", ""), a.get("obs_source"))  # fester Wert: Ohren = Stream
         if audio.available:
             await audio.apply(target, a.get("app", ""), op, step)
             await self.s.refresh_audio()

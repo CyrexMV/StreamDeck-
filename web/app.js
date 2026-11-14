@@ -93,9 +93,9 @@ const OBS_OPS = [
   ["record_start", "Aufnahme starten"], ["record_stop", "Aufnahme stoppen"], ["stream_start", "Stream starten"], ["stream_stop", "Stream stoppen"],
 ];
 
-const SCOPES = [["ears", "🎧 Nur meine Ohren (Windows-Mixer)"], ["stream", "📡 Nur Stream (OBS-Quelle)"], ["both", "🎧+📡 Beide"]];
-const SPOTIFY_SCOPES = [["both", "🎧+📡 Beide (Regler in der Spotify-App)"], ["ears", "🎧 Nur meine Ohren (Windows-Mixer)"], ["stream", "📡 Nur Stream (OBS-Quelle)"]];
-const SCOPE_HELP = "„Nur meine Ohren“ lässt den Stream unverändert, wenn OBS das Programm über eine <b>Anwendungsaudioaufnahme</b> aufnimmt. „Nur Stream“ regelt genau diese OBS-Quelle.";
+const SCOPES = [["ears", "🎧 Nur meine Ohren (Stream bleibt gleich)"], ["stream", "📡 Nur Stream"], ["both", "🎧+📡 Beide"]];
+const SPOTIFY_SCOPES = [["both", "🎧+📡 Beide (Regler in der Spotify-App)"], ["ears", "🎧 Nur meine Ohren (Stream bleibt gleich)"], ["stream", "📡 Nur Stream"]];
+const SCOPE_HELP = "Der Windows-Mixer wirkt auch auf die OBS-Anwendungsaudioaufnahme. Bei „Nur meine Ohren“ gleicht TabDeck das in OBS automatisch aus (Filter „TabDeck Ausgleich“) – der Stream bleibt gleich laut. Für dich geht es bis ca. 3 % herunter, „stumm“ heißt hier: fast unhörbar.";
 const OBS_SOURCE_FIELD = (show) => ({ k: "obs_source", label: "OBS-Quelle für den Stream (optional)", type: "datalist", source: "obsInputs", show,
   ph: "automatisch (Anwendungsaudioaufnahme des Programms)",
   help: "Leer lassen: TabDeck nimmt automatisch die Anwendungsaudioaufnahme in OBS, die dieses Programm aufnimmt." });
@@ -144,7 +144,7 @@ const ACTIONS = {
       { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "volume_set" },
       { k: "scope", label: "Gilt für", type: "select", options: SPOTIFY_SCOPES, help: SCOPE_HELP,
         show: (a) => ["volume_up", "volume_down", "volume_set", "mute_toggle"].includes(a.op) },
-      OBS_SOURCE_FIELD((a) => ["volume_up", "volume_down", "volume_set", "mute_toggle"].includes(a.op) && a.scope === "stream"),
+      OBS_SOURCE_FIELD((a) => ["volume_up", "volume_down", "volume_set", "mute_toggle"].includes(a.op) && (a.scope === "stream" || a.scope === "ears")),
       { k: "link", label: "Spotify-Link", type: "spotifylink", show: (a) => a.op === "play_link",
         help: "In Spotify beim Song (oder Album/Playlist) auf „⋯ → Teilen → Link kopieren“ tippen und hier einfügen." },
       { k: "enqueue", label: "Nur zur Warteschlange hinzufügen (statt sofort abspielen)", type: "checkbox", show: (a) => a.op === "play_link" },
@@ -163,7 +163,7 @@ const ACTIONS = {
         help: "Programme erscheinen in der Liste, sobald sie Ton abspielen. Du kannst den Namen auch eintippen (z. B. Discord.exe, chrome.exe)." },
       { k: "op", label: "Funktion", type: "select", options: [["up", "Lauter"], ["down", "Leiser"], ["set", "Auf festen Wert setzen"], ["toggle_mute", "Stumm an/aus"], ["mute", "Stumm schalten"], ["unmute", "Stumm aufheben"]] },
       { k: "scope", label: "Gilt für", type: "select", options: SCOPES, show: (a) => a.target === "app", help: SCOPE_HELP },
-      OBS_SOURCE_FIELD((a) => a.target === "app" && (a.scope === "stream" || a.scope === "both")),
+      OBS_SOURCE_FIELD((a) => a.target === "app" && a.scope !== "both"),
       { k: "step", label: "Schritt in %", type: "number", min: 1, max: 100, show: (a) => a.op === "up" || a.op === "down" },
       { k: "step", label: "Lautstärke in %", type: "number", min: 0, max: 100, show: (a) => a.op === "set" },
     ],
@@ -217,7 +217,7 @@ const FADER_FIELDS = [
     help: "Programme erscheinen in der Liste, sobald sie Ton abspielen. Name auch eintippbar (z. B. Discord.exe, chrome.exe)." },
   { k: "scope", label: "Gilt für", type: "select", options: SCOPES, show: (a) => a.target === "app", help: SCOPE_HELP },
   { k: "scope", label: "Gilt für", type: "select", options: SPOTIFY_SCOPES, show: (a) => a.target === "spotify", help: SCOPE_HELP },
-  OBS_SOURCE_FIELD((a) => (a.target === "app" || a.target === "spotify") && (a.scope === "stream" || (a.target === "app" && a.scope === "both"))),
+  OBS_SOURCE_FIELD((a) => (a.target === "app" && a.scope !== "both") || (a.target === "spotify" && (a.scope === "stream" || a.scope === "ears"))),
   { k: "input", label: "OBS-Audioquelle", type: "datalist", source: "obsActive", show: (a) => a.target === "obs",
     help: "Zur Auswahl stehen die Quellen, die gerade in deinem OBS-Audio-Mixer aktiv sind." },
   { k: "_hint", type: "info", show: (a) => a.target === "spotify", html: "Benötigt die Spotify-Verbindung unter ⚙️ Einstellungen → Spotify (Premium)." },
@@ -617,6 +617,7 @@ function actionActive(a) {
     case "volume": {
       if (!["toggle_mute", "mute", "unmute"].includes(a.op)) return null;
       if (a.target === "app" && a.scope === "stream") return !!obsAppState(a.app, a.obs_source).muted;
+      if (a.target === "app" && (a.scope || "ears") === "ears") return !!channelState({ kind: "app", app: a.app, scope: "ears" }).muted;
       const t = a.target === "app" ? (au.apps || {})[appKey(a.app)] : au[a.target];
       return !!(t && t.muted);
     }
@@ -908,7 +909,8 @@ function channelState(ch) {
       if ((ch.scope || "ears") === "stream") return obsAppState(ch.app, ch.obs_source);
       if (au.available === false) return { level: null, note: "nur unter Windows" };
       const t = (au.apps || {})[appKey(ch.app)];
-      return t ? { level: t.level, muted: t.muted } : { level: null, note: "spielt keinen Ton" };
+      if (!t) return { level: null, note: "spielt keinen Ton" };
+      return { level: t.level, muted: t.muted || ((ch.scope || "ears") === "ears" && t.level <= 3.5) };
     }
     case "spotify": {
       if (ch.scope === "ears") return channelState({ kind: "app", app: "Spotify.exe" });

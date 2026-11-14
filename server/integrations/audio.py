@@ -147,7 +147,7 @@ class AudioController:
                 vol = session.SimpleAudioVolume
                 state["apps"][name.lower().removesuffix(".exe")] = {
                     "name": name,
-                    "level": round(vol.GetMasterVolume() * 100),
+                    "level": round(vol.GetMasterVolume() * 100, 1),
                     "muted": bool(vol.GetMute()),
                 }
         except Exception:
